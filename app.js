@@ -369,18 +369,12 @@ async function openViewer(fileId){
       body.innerHTML = `<embed class="pdf-frame" src="${url}" type="application/pdf" />`;
       return;
     }
-    if(f.ext==="docx"){
-      const buf = await (await fetch(url)).arrayBuffer();
-      body.innerHTML = `<div class="docx-viewport"><div id="docx-style-host" hidden></div><div id="docx-render-host"></div></div>`;
-      await docx.renderAsync(buf, document.getElementById("docx-render-host"), document.getElementById("docx-style-host"), {
-        inWrapper: true, breakPages: true, ignoreLastRenderedPageBreak: true,
-      });
-      return;
-    }
-    if(f.ext==="xlsx" || f.ext==="xls"){
-      const buf = await (await fetch(url)).arrayBuffer();
-      const wb = XLSX.read(buf, { type:"array" });
-      renderXlsx(wb);
+    if(["docx","doc","xlsx","xls","pptx","ppt"].includes(f.ext)){
+      const officeUrl = "https://view.officeapps.live.com/op/embed.aspx?src=" + encodeURIComponent(url);
+      body.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;gap:10px;width:100%;">
+        <iframe class="office-frame" src="${officeUrl}" frameborder="0"></iframe>
+        <p class="hint">Дэлгэц дээр гарахгүй бол <a href="${url}" target="_blank" rel="noopener">шинэ tab-аар нээх</a>.</p>
+      </div>`;
       return;
     }
     if(f.ext==="drawio"){
@@ -407,22 +401,6 @@ async function openViewer(fileId){
   }
 }
 
-let currentWb = null;
-function renderXlsx(wb){
-  currentWb = wb;
-  const body = document.getElementById("viewer-body");
-  const first = wb.SheetNames[0];
-  body.innerHTML = `<div class="xlsx-wrap"><div class="sheet-tabs" id="sheet-tabs"></div><div id="sheet-table"></div></div>`;
-  document.getElementById("sheet-tabs").innerHTML = wb.SheetNames.map(n=>
-    `<button class="sheet-tab" data-sheet="${escapeHtml(n)}">${escapeHtml(n)}</button>`
-  ).join("");
-  document.querySelectorAll(".sheet-tab").forEach(b=>b.addEventListener("click", ()=>showSheet(b.dataset.sheet)));
-  showSheet(first);
-}
-function showSheet(name){
-  document.querySelectorAll(".sheet-tab").forEach(b=>b.classList.toggle("active", b.dataset.sheet===name));
-  document.getElementById("sheet-table").innerHTML = XLSX.utils.sheet_to_html(currentWb.Sheets[name], { editable:false });
-}
 
 /* ---------------- static event wiring ---------------- */
 function wireStaticEvents(){
