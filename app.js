@@ -820,30 +820,90 @@ async function deleteFile(id){
 }
 
 /* ---------------- QR board ---------------- */
-async function doAddQrItem(){
+const QR_LOGO_ASPECT = 0.6024; // combined school+ISO logo width/height
+
+// Draws a logo-branded QR into #qr-gen-canvas (same layout/colors as the
+// old standalone QR_Generator_184.html tool) so admins no longer have to
+// open that separate file.
+function drawGeneratedQr(url){
+  return new Promise((resolve)=>{
+    const canvas = document.getElementById("qr-gen-canvas");
+    const ctx = canvas.getContext("2d");
+    const qr = window.qrcode(0, "H");
+    qr.addData(url);
+    qr.make();
+    const moduleCount = qr.getModuleCount();
+
+    const CSS_SIZE = 240;
+    const DPR = Math.max(window.devicePixelRatio || 1, 3);
+    canvas.width = CSS_SIZE * DPR;
+    canvas.height = CSS_SIZE * DPR;
+    canvas.style.width = CSS_SIZE + "px";
+    canvas.style.height = CSS_SIZE + "px";
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+
+    const cell = CSS_SIZE / moduleCount;
+    ctx.clearRect(0, 0, CSS_SIZE, CSS_SIZE);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, CSS_SIZE, CSS_SIZE);
+    ctx.fillStyle = "#068A50";
+    for(let r=0; r<moduleCount; r++){
+      for(let c=0; c<moduleCount; c++){
+        if(qr.isDark(r,c)){
+          ctx.fillRect(Math.round(c*cell), Math.round(r*cell), Math.ceil(cell)+0.5, Math.ceil(cell)+0.5);
+        }
+      }
+    }
+
+    const logoImg = new Image();
+    logoImg.onload = ()=>{
+      const logoHeight = CSS_SIZE * 0.44;
+      const logoWidth = logoHeight * QR_LOGO_ASPECT;
+      ctx.drawImage(logoImg, (CSS_SIZE-logoWidth)/2, (CSS_SIZE-logoHeight)/2, logoWidth, logoHeight);
+      resolve();
+    };
+    logoImg.onerror = ()=> resolve();
+    logoImg.src = "./assets/qr/logo-combined.png";
+  });
+}
+
+async function generateQrPreview(){
+  const status = document.getElementById("qr-add-status");
+  const url = document.getElementById("qr-item-url").value.trim();
+  if(!url){ status.textContent = "Холбоосоо оруулна уу."; return; }
+  try{ new URL(url); } catch(e){ status.textContent = "Зөв холбоос (URL) оруулна уу."; return; }
+  status.textContent = "";
+  await drawGeneratedQr(url);
+  document.getElementById("qr-gen-placeholder").hidden = true;
+  document.getElementById("qr-gen-canvas").hidden = false;
+  document.getElementById("qr-add-go").disabled = false;
+}
+
+function addGeneratedQrToBoard(){
   const nameInput = document.getElementById("qr-item-name");
-  const fileInput = document.getElementById("qr-item-file");
   const status = document.getElementById("qr-add-status");
   const name = nameInput.value.trim();
-  const file = fileInput.files[0];
-  if(!name || !file){ status.textContent = "Нэр болон зураг хоёуланг нь оруулна уу."; return; }
-  const id = uid();
-  const ext = extOf(file.name) || "png";
-  const path = `qr/${id}.${ext}`;
-  status.textContent = "Хуулж байна…";
-  const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, file, { contentType: file.type || "image/png" });
-  if(upErr){ status.textContent = "Алдаа: " + upErr.message; return; }
-  const nextPosition = qrItems.reduce((max,x)=> Math.max(max, x.position ?? 0), -1) + 1;
-  const { error: dbErr } = await supabase.from("qr_items").insert({ id, name, storage_path: path, position: nextPosition });
-  if(dbErr){
-    await supabase.storage.from(BUCKET).remove([path]);
-    status.textContent = "Алдаа: " + dbErr.message;
-    return;
-  }
-  status.textContent = "";
-  nameInput.value = "";
-  fileInput.value = "";
-  closeModal("modal-qr-add");
+  if(!name){ status.textContent = "Нэр оруулна уу."; return; }
+  const canvas = document.getElementById("qr-gen-canvas");
+  status.textContent = "Хадгалж байна…";
+  canvas.toBlob(async (blob)=>{
+    if(!blob){ status.textContent = "QR зураг бэлдэхэд алдаа гарлаа."; return; }
+    const id = uid();
+    const path = `qr/${id}.png`;
+    const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, blob, { contentType: "image/png" });
+    if(upErr){ status.textContent = "Алдаа: " + upErr.message; return; }
+    const nextPosition = qrItems.reduce((max,x)=> Math.max(max, x.position ?? 0), -1) + 1;
+    const { error: dbErr } = await supabase.from("qr_items").insert({ id, name, storage_path: path, position: nextPosition });
+    if(dbErr){
+      await supabase.storage.from(BUCKET).remove([path]);
+      status.textContent = "Алдаа: " + dbErr.message;
+      return;
+    }
+    status.textContent = "";
+    closeModal("modal-qr-add");
+  }, "image/png");
 }
 async function deleteQrItem(id){
   const item = qrItemById(id);
@@ -940,11 +1000,15 @@ function wireStaticEvents(){
 
   document.getElementById("qr-add-btn").addEventListener("click", ()=>{
     document.getElementById("qr-item-name").value = "";
-    document.getElementById("qr-item-file").value = "";
+    document.getElementById("qr-item-url").value = "";
     document.getElementById("qr-add-status").textContent = "";
+    document.getElementById("qr-gen-canvas").hidden = true;
+    document.getElementById("qr-gen-placeholder").hidden = false;
+    document.getElementById("qr-add-go").disabled = true;
     openModal("modal-qr-add");
   });
-  document.getElementById("qr-add-go").addEventListener("click", doAddQrItem);
+  document.getElementById("qr-gen-go").addEventListener("click", generateQrPreview);
+  document.getElementById("qr-add-go").addEventListener("click", addGeneratedQrToBoard);
 
   document.getElementById("rename-go").addEventListener("click", doRename);
   document.getElementById("viewer-close-btn").addEventListener("click", closeViewer);

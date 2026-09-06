@@ -151,6 +151,10 @@ embed.pdf-frame{width:100%;height:80vh;max-width:900px;border-radius:10px;border
 .link-row input{flex:1;padding:8px 10px;border-radius:7px;border:1.5px solid var(--border);background:var(--bg);
   color:var(--text);font-size:12px;}
 
+.qr-gen-preview{display:flex;align-items:center;justify-content:center;margin-top:16px;min-height:120px;}
+.qr-gen-preview canvas{border-radius:10px;border:1px solid var(--border);}
+.qr-gen-preview .hint{margin:0;}
+
 .qr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:18px;}
 .qr-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;
   display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;position:relative;}

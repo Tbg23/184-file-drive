@@ -10,6 +10,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@500;600;700;800&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./style.css" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="./assets/vendor/qrcode-lib.js"></script>
 </head>
 <body>
 
@@ -181,15 +182,20 @@
 <div class="overlay" id="modal-qr-add">
   <div class="modal">
     <h2>QR нэмэх</h2>
-    <p class="hint">Өөрийн загварчилсан QR зургаа (PNG/JPG) энд байршуулна.</p>
+    <p class="hint">Холбоосоо оруулаад лого бүхий QR код үүсгээд, шууд самбарт хадгална.</p>
     <label>Нэр</label>
     <input type="text" id="qr-item-name" placeholder="Жишээ: Б.Наранцэцэг" />
-    <label>QR зураг</label>
-    <input type="file" id="qr-item-file" accept="image/*" />
+    <label>Холбоос (URL)</label>
+    <input type="url" id="qr-item-url" placeholder="https://example.com" />
+    <div class="qr-gen-preview">
+      <canvas id="qr-gen-canvas" width="240" height="240" hidden></canvas>
+      <div class="hint" id="qr-gen-placeholder">QR код энд гарна</div>
+    </div>
     <div id="qr-add-status" class="hint" style="margin-top:8px;"></div>
     <div class="modal-actions">
       <button class="btn-ghost" data-close="modal-qr-add">Болих</button>
-      <button class="btn-primary" id="qr-add-go">Нэмэх</button>
+      <button class="btn-ghost" id="qr-gen-go">QR үүсгэх</button>
+      <button class="btn-primary" id="qr-add-go" disabled>Самбарт нэмэх</button>
     </div>
   </div>
 </div>
