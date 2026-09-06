@@ -73,7 +73,7 @@ async function loadData(){
   render();
 }
 async function loadQrItems(){
-  const { data, error } = await supabase.from("qr_items").select("*").order("name", { ascending:true });
+  const { data, error } = await supabase.from("qr_items").select("*").order("position", { ascending:true });
   if(error){ showToast("QR ачаалахад алдаа: " + error.message, true); return; }
   qrItems = data || [];
   render();
@@ -329,7 +329,7 @@ function renderQrGrid(){
   }
   grid.innerHTML = qrItems.map(item=>{
     const imgUrl = publicUrlFor(item.storage_path);
-    return `<div class="qr-card">
+    return `<div class="qr-card" data-qr-id="${item.id}" draggable="${isAdmin}">
       ${isAdmin ? `<div class="qr-actions">
         <button class="icon-btn" title="Нэр солих" data-qr-rename="${item.id}">✎</button>
         <button class="icon-btn danger" title="Устгах" data-qr-delete="${item.id}">✕</button>
@@ -342,6 +342,39 @@ function renderQrGrid(){
     el.addEventListener("click", ()=> openRename("qr", el.dataset.qrRename)));
   grid.querySelectorAll("[data-qr-delete]").forEach(el=>
     el.addEventListener("click", ()=> deleteQrItem(el.dataset.qrDelete)));
+  if(isAdmin) wireQrDrag(grid);
+}
+
+let qrDragId = null;
+function wireQrDrag(grid){
+  grid.querySelectorAll(".qr-card").forEach(card=>{
+    card.addEventListener("dragstart", ()=>{ qrDragId = card.dataset.qrId; card.classList.add("qr-dragging"); });
+    card.addEventListener("dragend", ()=>{ card.classList.remove("qr-dragging"); });
+    card.addEventListener("dragover", (e)=>{ e.preventDefault(); });
+    card.addEventListener("drop", (e)=>{
+      e.preventDefault();
+      const targetId = card.dataset.qrId;
+      if(!qrDragId || qrDragId===targetId) return;
+      reorderQrItems(qrDragId, targetId);
+      qrDragId = null;
+    });
+  });
+}
+
+async function reorderQrItems(sourceId, targetId){
+  const fromIdx = qrItems.findIndex(x=>x.id===sourceId);
+  const toIdx = qrItems.findIndex(x=>x.id===targetId);
+  if(fromIdx===-1 || toIdx===-1) return;
+  const reordered = [...qrItems];
+  const [moved] = reordered.splice(fromIdx,1);
+  reordered.splice(toIdx,0,moved);
+  qrItems = reordered;
+  render();
+  const results = await Promise.all(
+    qrItems.map((item,i)=> supabase.from("qr_items").update({ position:i }).eq("id", item.id))
+  );
+  const failed = results.find(r=>r.error);
+  if(failed){ showToast("Дараалал хадгалахад алдаа: " + failed.error.message, true); }
 }
 
 /* ---------------- calendar (Хуанли) ---------------- */
@@ -800,7 +833,8 @@ async function doAddQrItem(){
   status.textContent = "Хуулж байна…";
   const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, file, { contentType: file.type || "image/png" });
   if(upErr){ status.textContent = "Алдаа: " + upErr.message; return; }
-  const { error: dbErr } = await supabase.from("qr_items").insert({ id, name, storage_path: path });
+  const nextPosition = qrItems.reduce((max,x)=> Math.max(max, x.position ?? 0), -1) + 1;
+  const { error: dbErr } = await supabase.from("qr_items").insert({ id, name, storage_path: path, position: nextPosition });
   if(dbErr){
     await supabase.storage.from(BUCKET).remove([path]);
     status.textContent = "Алдаа: " + dbErr.message;
