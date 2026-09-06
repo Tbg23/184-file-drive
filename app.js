@@ -905,6 +905,20 @@ function addGeneratedQrToBoard(){
     closeModal("modal-qr-add");
   }, "image/png");
 }
+
+// Shortcut from the file viewer: pre-fill name/link with the open file's and
+// generate the preview immediately, so admin only has to hit "Самбарт нэмэх".
+async function openQrGenFromViewer(){
+  if(!viewerQrTarget) return;
+  document.getElementById("qr-item-name").value = viewerQrTarget.name;
+  document.getElementById("qr-item-url").value = viewerQrTarget.url;
+  document.getElementById("qr-add-status").textContent = "";
+  document.getElementById("qr-gen-canvas").hidden = true;
+  document.getElementById("qr-gen-placeholder").hidden = false;
+  document.getElementById("qr-add-go").disabled = true;
+  openModal("modal-qr-add");
+  await generateQrPreview();
+}
 async function deleteQrItem(id){
   const item = qrItemById(id);
   if(!item) return;
@@ -921,6 +935,7 @@ function closeViewer(){
   location.hash = "f=" + encodeURIComponent(f ? f.folder_id : "root");
 }
 
+let viewerQrTarget = null; // { name, url } of the file currently open in the viewer, for the "QR үүсгэх" shortcut
 async function openViewer(fileId){
   const f = fileById(fileId);
   const body = document.getElementById("viewer-body");
@@ -928,6 +943,8 @@ async function openViewer(fileId){
   document.getElementById("viewer-badge").innerHTML = `<span class="badge" style="background:${meta.bg}">${meta.label}</span>`;
   document.getElementById("viewer-name").textContent = f ? f.name : "Файл олдсонгүй";
   body.innerHTML = `<div class="center-card">Ачааллаж байна…</div>`;
+  viewerQrTarget = f ? { name: f.name, url: publicUrlFor(f.storage_path) } : null;
+  document.getElementById("viewer-qr-btn").hidden = !session || !f;
   if(!f){ body.innerHTML = `<div class="center-card">Энэ файл олдсонгүй. Устгагдсан байж магадгүй.</div>`; return; }
 
   const url = publicUrlFor(f.storage_path);
@@ -1012,6 +1029,7 @@ function wireStaticEvents(){
 
   document.getElementById("rename-go").addEventListener("click", doRename);
   document.getElementById("viewer-close-btn").addEventListener("click", closeViewer);
+  document.getElementById("viewer-qr-btn").addEventListener("click", openQrGenFromViewer);
 
   document.getElementById("cal-add-category-btn").addEventListener("click", openCalCategoryManager);
   document.getElementById("cal-year-input").addEventListener("change", async (e)=>{
