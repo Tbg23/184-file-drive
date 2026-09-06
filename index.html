@@ -56,6 +56,14 @@
       <div id="listing"></div>
     </div>
     <div id="qr-view" hidden>
+      <div id="qr-schedule" class="qr-schedule" hidden>
+        <div class="qr-schedule-info">
+          <div class="qr-schedule-title" id="qr-schedule-title"></div>
+          <div class="qr-schedule-subtitle" id="qr-schedule-subtitle"></div>
+        </div>
+        <div class="qr-schedule-countdown" id="qr-schedule-countdown"></div>
+        <button class="icon-btn" id="qr-schedule-edit-btn" title="Хуваарь засах" hidden>✎</button>
+      </div>
       <div class="topbar">
         <div class="crumbs"><span>QR самбар</span></div>
         <div class="actions" id="qr-admin-actions" hidden>
@@ -196,6 +204,23 @@
       <button class="btn-ghost" data-close="modal-qr-add">Болих</button>
       <button class="btn-ghost" id="qr-gen-go">QR үүсгэх</button>
       <button class="btn-primary" id="qr-add-go" disabled>Самбарт нэмэх</button>
+    </div>
+  </div>
+</div>
+
+<!-- QR schedule / countdown edit modal -->
+<div class="overlay" id="modal-qr-schedule">
+  <div class="modal">
+    <h2>Хуваарь засах</h2>
+    <label>Гарчиг</label>
+    <input type="text" id="qr-sched-title" placeholder="Жишээ: Дотоод аудитын шалгалт" />
+    <label>Дэд гарчиг</label>
+    <input type="text" id="qr-sched-subtitle" placeholder="Жишээ: 9-р сарын 15, 16" />
+    <label>Огноо, цаг (тоолуур үүнд хүрэх хүртэл гүйнэ)</label>
+    <input type="datetime-local" id="qr-sched-target" />
+    <div class="modal-actions">
+      <button class="btn-ghost" data-close="modal-qr-schedule">Болих</button>
+      <button class="btn-primary" id="qr-sched-save">Хадгалах</button>
     </div>
   </div>
 </div>

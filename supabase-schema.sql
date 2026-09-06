@@ -95,3 +95,20 @@ alter table calendar_state enable row level security;
 create policy "public read calendar_state" on calendar_state for select using (true);
 create policy "authenticated write calendar_state" on calendar_state for all
   using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+-- QR самбарын дээд талын хуваарь + тоолуур (админ засна, бусад зөвхөн харна).
+create table if not exists qr_schedule (
+  id text primary key,
+  title text not null default '',
+  subtitle text not null default '',
+  target_at timestamptz,
+  updated_at timestamptz not null default now()
+);
+alter table qr_schedule enable row level security;
+create policy "public read qr_schedule" on qr_schedule for select using (true);
+create policy "authenticated write qr_schedule" on qr_schedule for all
+  using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+insert into qr_schedule (id, title, subtitle, target_at) values
+  ('main', 'Дотоод аудитын шалгалт', '9-р сарын 15, 16', '2026-09-15T09:00:00+08:00')
+on conflict (id) do nothing;

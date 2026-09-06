@@ -7,6 +7,7 @@ const BUCKET = "files";
 let folders = [];
 let files = [];
 let qrItems = [];
+let qrSchedule = null;
 let calState = null;
 let session = null;
 
@@ -78,6 +79,12 @@ async function loadQrItems(){
   qrItems = data || [];
   render();
 }
+async function loadQrSchedule(){
+  const { data, error } = await supabase.from("qr_schedule").select("*").eq("id","main").maybeSingle();
+  if(error){ showToast("Хуваарь ачаалахад алдаа: " + error.message, true); return; }
+  qrSchedule = data || null;
+  render();
+}
 async function loadCalendarState(){
   const { data, error } = await supabase.from("calendar_state").select("*").eq("id","main").maybeSingle();
   if(error){ showToast("Хуанли ачаалахад алдаа: " + error.message, true); return; }
@@ -135,7 +142,7 @@ async function boot(){
 
   if(localStorage.getItem("iso184_unlocked") === "1") showApp();
 
-  await Promise.all([loadData(), loadQrItems(), loadCalendarState()]);
+  await Promise.all([loadData(), loadQrItems(), loadQrSchedule(), loadCalendarState()]);
   updateAdminUI();
 
   supabase
@@ -143,6 +150,7 @@ async function boot(){
     .on("postgres_changes", { event:"*", schema:"public", table:"files" }, loadData)
     .on("postgres_changes", { event:"*", schema:"public", table:"folders" }, loadData)
     .on("postgres_changes", { event:"*", schema:"public", table:"qr_items" }, loadQrItems)
+    .on("postgres_changes", { event:"*", schema:"public", table:"qr_schedule" }, loadQrSchedule)
     .on("postgres_changes", { event:"*", schema:"public", table:"calendar_state" }, loadCalendarState)
     .subscribe();
 
@@ -223,6 +231,7 @@ function render(){
   if(calRoute){
     document.querySelectorAll(".side-link").forEach(a=>a.classList.toggle("active", a.dataset.nav==="calendar"));
     document.getElementById("viewer").classList.remove("show");
+    stopQrCountdown();
     renderCalendar();
     return;
   }
@@ -230,9 +239,11 @@ function render(){
   if(qrRoute){
     document.querySelectorAll(".side-link").forEach(a=>a.classList.toggle("active", a.dataset.nav==="qr"));
     document.getElementById("viewer").classList.remove("show");
+    renderQrSchedule();
     renderQrGrid();
     return;
   }
+  stopQrCountdown();
 
   const fileId = currentFileId();
   const viewerEl = document.getElementById("viewer");
@@ -317,6 +328,72 @@ function render(){
     el.addEventListener("click", (e)=>{ e.stopPropagation(); openRename("file", el.dataset.rename); }));
   listing.querySelectorAll("[data-delete]").forEach(el=>
     el.addEventListener("click", (e)=>{ e.stopPropagation(); deleteFile(el.dataset.delete); }));
+}
+
+/* ---------------- QR schedule / countdown ---------------- */
+let qrCountdownTimer = null;
+function stopQrCountdown(){
+  if(qrCountdownTimer){ clearInterval(qrCountdownTimer); qrCountdownTimer = null; }
+}
+function tickQrCountdown(){
+  const el = document.getElementById("qr-schedule-countdown");
+  if(!qrSchedule || !qrSchedule.target_at){ el.innerHTML = ""; return; }
+  const diff = new Date(qrSchedule.target_at).getTime() - Date.now();
+  if(diff <= 0){
+    el.innerHTML = `<div class="qr-cd-done">Эхэлсэн</div>`;
+    stopQrCountdown();
+    return;
+  }
+  const totalSec = Math.floor(diff/1000);
+  const days = Math.floor(totalSec/86400);
+  const hours = Math.floor((totalSec%86400)/3600);
+  const mins = Math.floor((totalSec%3600)/60);
+  const secs = totalSec%60;
+  const pad = n=> String(n).padStart(2,"0");
+  el.innerHTML = `
+    <div class="qr-cd-box"><span class="qr-cd-num">${days}</span><span class="qr-cd-label">өдөр</span></div>
+    <span class="qr-cd-sep">:</span>
+    <div class="qr-cd-box"><span class="qr-cd-num">${pad(hours)}</span><span class="qr-cd-label">цаг</span></div>
+    <span class="qr-cd-sep">:</span>
+    <div class="qr-cd-box"><span class="qr-cd-num">${pad(mins)}</span><span class="qr-cd-label">мин</span></div>
+    <span class="qr-cd-sep">:</span>
+    <div class="qr-cd-box"><span class="qr-cd-num">${pad(secs)}</span><span class="qr-cd-label">сек</span></div>
+  `;
+}
+function startQrCountdown(){
+  stopQrCountdown();
+  tickQrCountdown();
+  if(qrSchedule && qrSchedule.target_at){ qrCountdownTimer = setInterval(tickQrCountdown, 1000); }
+}
+
+function renderQrSchedule(){
+  const isAdmin = !!session;
+  const wrap = document.getElementById("qr-schedule");
+  document.getElementById("qr-schedule-edit-btn").hidden = !isAdmin;
+  const hasContent = qrSchedule && (qrSchedule.title || qrSchedule.target_at);
+  if(!hasContent){
+    stopQrCountdown();
+    wrap.hidden = !isAdmin;
+    document.getElementById("qr-schedule-title").textContent = "Хуваарь оруулаагүй байна";
+    document.getElementById("qr-schedule-subtitle").textContent = "";
+    document.getElementById("qr-schedule-countdown").innerHTML = "";
+    return;
+  }
+  wrap.hidden = false;
+  document.getElementById("qr-schedule-title").textContent = qrSchedule.title || "";
+  document.getElementById("qr-schedule-subtitle").textContent = qrSchedule.subtitle || "";
+  startQrCountdown();
+}
+
+async function saveQrSchedule(){
+  const title = document.getElementById("qr-sched-title").value.trim();
+  const subtitle = document.getElementById("qr-sched-subtitle").value.trim();
+  const targetVal = document.getElementById("qr-sched-target").value;
+  const target_at = targetVal ? new Date(targetVal).toISOString() : null;
+  const { error } = await supabase.from("qr_schedule")
+    .upsert({ id:"main", title, subtitle, target_at, updated_at: new Date().toISOString() });
+  if(error){ showToast("Хуваарь хадгалахад алдаа: " + error.message, true); return; }
+  closeModal("modal-qr-schedule");
 }
 
 function renderQrGrid(){
@@ -1026,6 +1103,21 @@ function wireStaticEvents(){
   });
   document.getElementById("qr-gen-go").addEventListener("click", generateQrPreview);
   document.getElementById("qr-add-go").addEventListener("click", addGeneratedQrToBoard);
+
+  document.getElementById("qr-schedule-edit-btn").addEventListener("click", ()=>{
+    document.getElementById("qr-sched-title").value = qrSchedule?.title || "";
+    document.getElementById("qr-sched-subtitle").value = qrSchedule?.subtitle || "";
+    const targetInput = document.getElementById("qr-sched-target");
+    if(qrSchedule?.target_at){
+      const d = new Date(qrSchedule.target_at);
+      const pad = n=> String(n).padStart(2,"0");
+      targetInput.value = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    } else {
+      targetInput.value = "";
+    }
+    openModal("modal-qr-schedule");
+  });
+  document.getElementById("qr-sched-save").addEventListener("click", saveQrSchedule);
 
   document.getElementById("rename-go").addEventListener("click", doRename);
   document.getElementById("viewer-close-btn").addEventListener("click", closeViewer);
