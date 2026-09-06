@@ -51,6 +51,18 @@ insert into folders (id, name, parent_id) values
   ('f-sudalgaa', 'Судалгаанууд', 'f-184')
 on conflict (id) do nothing;
 
+-- QR самбар: админ өөрийн загварчилсан QR зургаа нэрийн хамт байршуулна.
+create table if not exists qr_items (
+  id text primary key,
+  name text not null,
+  storage_path text not null,
+  created_at timestamptz not null default now()
+);
+alter table qr_items enable row level security;
+create policy "public read qr_items" on qr_items for select using (true);
+create policy "authenticated write qr_items" on qr_items for all
+  using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
 -- Дараа нь Dashboard → Storage дотор "files" нэртэй PUBLIC bucket үүсгэнэ үү,
 -- дараа нь доорх storage policy-г SQL Editor-т ажиллуулна:
 

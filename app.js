@@ -6,6 +6,7 @@ const BUCKET = "files";
 
 let folders = [];
 let files = [];
+let qrItems = [];
 let session = null;
 
 const TYPE_META = {
@@ -41,7 +42,7 @@ function fmtDate(iso){
 }
 function uid(){ return crypto.randomUUID(); }
 function escapeHtml(s){ return (s||"").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
-function publicUrlFor(f){ return supabase.storage.from(BUCKET).getPublicUrl(f.storage_path).data.publicUrl; }
+function publicUrlFor(path){ return supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl; }
 
 /* ---------------- toast ---------------- */
 function showToast(msg, isError){
@@ -66,10 +67,17 @@ async function loadData(){
   files = f2 || [];
   render();
 }
+async function loadQrItems(){
+  const { data, error } = await supabase.from("qr_items").select("*").order("name", { ascending:true });
+  if(error){ showToast("QR ачаалахад алдаа: " + error.message, true); return; }
+  qrItems = data || [];
+  render();
+}
 function folderById(id){ return folders.find(x=>x.id===id); }
 function childFolders(id){ return folders.filter(x=>x.parent_id===id); }
 function filesIn(id){ return files.filter(x=>x.folder_id===id); }
 function fileById(id){ return files.find(x=>x.id===id); }
+function qrItemById(id){ return qrItems.find(x=>x.id===id); }
 function breadcrumbChain(id){
   const chain=[]; let cur=folderById(id);
   while(cur){ chain.unshift(cur); cur = cur.parent_id ? folderById(cur.parent_id) : null; }
@@ -87,13 +95,14 @@ async function boot(){
 
   if(localStorage.getItem("iso184_unlocked") === "1") showApp();
 
-  await loadData();
+  await Promise.all([loadData(), loadQrItems()]);
   updateAdminUI();
 
   supabase
-    .channel("public:files-folders")
+    .channel("public:drive-changes")
     .on("postgres_changes", { event:"*", schema:"public", table:"files" }, loadData)
     .on("postgres_changes", { event:"*", schema:"public", table:"folders" }, loadData)
+    .on("postgres_changes", { event:"*", schema:"public", table:"qr_items" }, loadQrItems)
     .subscribe();
 
   window.addEventListener("hashchange", render);
@@ -120,15 +129,12 @@ function showApp(){
 function updateAdminUI(){
   const statusEl = document.getElementById("admin-status");
   const btn = document.getElementById("admin-btn");
-  const actions = document.getElementById("admin-actions");
   if(session){
     statusEl.textContent = "Админ: " + session.user.email;
     btn.textContent = "Гарах";
-    actions.hidden = false;
   } else {
     statusEl.textContent = "Зочин горим";
     btn.textContent = "Админ нэвтрэх";
-    actions.hidden = true;
   }
   render();
 }
@@ -144,6 +150,7 @@ async function adminLogin(){
 }
 
 /* ---------------- routing helpers ---------------- */
+function isQrRoute(){ return location.hash === "#qr"; }
 function currentFolderId(){
   const m = /f=([^&]+)/.exec(location.hash);
   return m ? decodeURIComponent(m[1]) : "root";
@@ -163,12 +170,24 @@ function renderSidebar(){
 function render(){
   if(!document.getElementById("app").classList.contains("show")) return;
 
+  const qrRoute = isQrRoute();
+  document.getElementById("folder-view").hidden = qrRoute;
+  document.getElementById("qr-view").hidden = !qrRoute;
+
+  renderSidebar();
+
+  if(qrRoute){
+    document.querySelectorAll(".side-link").forEach(a=>a.classList.toggle("active", a.dataset.nav==="qr"));
+    document.getElementById("viewer").classList.remove("show");
+    renderQrGrid();
+    return;
+  }
+
   const fileId = currentFileId();
   const viewerEl = document.getElementById("viewer");
   if(fileId){ openViewer(fileId); viewerEl.classList.add("show"); }
   else { viewerEl.classList.remove("show"); }
 
-  renderSidebar();
   const folderId = currentFolderId();
   const folder = folderById(folderId) || folderById("root");
   if(!folder) return;
@@ -191,6 +210,9 @@ function render(){
   }
 
   const listing = document.getElementById("listing");
+  const isAdmin = !!session;
+  document.getElementById("admin-actions").hidden = !isAdmin;
+
   if(subFolders.length===0 && subFiles.length===0){
     listing.innerHTML = `<div class="empty">
       <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>
@@ -199,7 +221,6 @@ function render(){
     return;
   }
 
-  const isAdmin = !!session;
   let rows = "";
   subFolders.forEach(f=>{
     rows += `<tr>
@@ -225,11 +246,10 @@ function render(){
       <td class="dim mono">${fmtDate(f.added_at)}</td>
       <td class="dim mono">${fmtSize(f.size)}</td>
       <td>
-        <div class="row-actions">
-          <button class="icon-btn" title="QR" data-qr="${f.id}">▦</button>
-          ${isAdmin ? `<button class="icon-btn" title="Нэр солих" data-rename="${f.id}">✎</button>
-          <button class="icon-btn danger" title="Устгах" data-delete="${f.id}">✕</button>` : ``}
-        </div>
+        ${isAdmin ? `<div class="row-actions">
+          <button class="icon-btn" title="Нэр солих" data-rename="${f.id}">✎</button>
+          <button class="icon-btn danger" title="Устгах" data-delete="${f.id}">✕</button>
+        </div>` : ``}
       </td>
     </tr>`;
   });
@@ -242,12 +262,35 @@ function render(){
     el.addEventListener("click", ()=>{ location.hash = "f=" + encodeURIComponent(el.dataset.openFolder); }));
   listing.querySelectorAll("[data-open-file]").forEach(el=>
     el.addEventListener("click", ()=>{ location.hash = "file=" + encodeURIComponent(el.dataset.openFile); }));
-  listing.querySelectorAll("[data-qr]").forEach(el=>
-    el.addEventListener("click", (e)=>{ e.stopPropagation(); openQr(el.dataset.qr); }));
   listing.querySelectorAll("[data-rename]").forEach(el=>
-    el.addEventListener("click", (e)=>{ e.stopPropagation(); openRename(el.dataset.rename); }));
+    el.addEventListener("click", (e)=>{ e.stopPropagation(); openRename("file", el.dataset.rename); }));
   listing.querySelectorAll("[data-delete]").forEach(el=>
     el.addEventListener("click", (e)=>{ e.stopPropagation(); deleteFile(el.dataset.delete); }));
+}
+
+function renderQrGrid(){
+  const isAdmin = !!session;
+  document.getElementById("qr-admin-actions").hidden = !isAdmin;
+  const grid = document.getElementById("qr-grid");
+  if(qrItems.length===0){
+    grid.innerHTML = `<div class="empty">QR код алга байна.</div>`;
+    return;
+  }
+  grid.innerHTML = qrItems.map(item=>{
+    const imgUrl = publicUrlFor(item.storage_path);
+    return `<div class="qr-card">
+      ${isAdmin ? `<div class="qr-actions">
+        <button class="icon-btn" title="Нэр солих" data-qr-rename="${item.id}">✎</button>
+        <button class="icon-btn danger" title="Устгах" data-qr-delete="${item.id}">✕</button>
+      </div>` : ``}
+      <img src="${imgUrl}" alt="${escapeHtml(item.name)}" />
+      <div class="qr-name">${escapeHtml(item.name)}</div>
+    </div>`;
+  }).join("");
+  grid.querySelectorAll("[data-qr-rename]").forEach(el=>
+    el.addEventListener("click", ()=> openRename("qr", el.dataset.qrRename)));
+  grid.querySelectorAll("[data-qr-delete]").forEach(el=>
+    el.addEventListener("click", ()=> deleteQrItem(el.dataset.qrDelete)));
 }
 
 /* ---------------- modals ---------------- */
@@ -304,19 +347,20 @@ async function doUpload(){
   closeModal("modal-upload");
 }
 
-/* ---------------- rename / delete ---------------- */
-let renameTargetId = null;
-function openRename(id){
-  renameTargetId = id;
-  const f = fileById(id);
-  document.getElementById("rename-input").value = f.name;
+/* ---------------- rename (shared: file or qr item) / delete ---------------- */
+let renameTarget = null; // { type: "file" | "qr", id }
+function openRename(type, id){
+  renameTarget = { type, id };
+  const item = type === "qr" ? qrItemById(id) : fileById(id);
+  if(!item) return;
+  document.getElementById("rename-input").value = item.name;
   openModal("modal-rename");
 }
 async function doRename(){
-  const f = fileById(renameTargetId);
   const val = document.getElementById("rename-input").value.trim();
-  if(!val || !f) return closeModal("modal-rename");
-  const { error } = await supabase.from("files").update({ name: val }).eq("id", f.id);
+  if(!val || !renameTarget) return closeModal("modal-rename");
+  const table = renameTarget.type === "qr" ? "qr_items" : "files";
+  const { error } = await supabase.from(table).update({ name: val }).eq("id", renameTarget.id);
   if(error){ showToast("Нэр солиход алдаа: " + error.message, true); return; }
   closeModal("modal-rename");
 }
@@ -330,20 +374,42 @@ async function deleteFile(id){
   if(dbErr){ showToast("Устгахад алдаа: " + dbErr.message, true); return; }
 }
 
-/* ---------------- QR ---------------- */
-function shareUrlFor(fileId){ return location.origin + location.pathname + "#file=" + encodeURIComponent(fileId); }
-function openQr(fileId){
-  const f = fileById(fileId);
-  document.getElementById("qr-title").textContent = "QR — " + f.name;
-  const box = document.getElementById("qrbox");
-  box.innerHTML = "";
-  const url = shareUrlFor(fileId);
-  new QRCode(box, { text: url, width: 200, height: 200, correctLevel: QRCode.CorrectLevel.M });
-  document.getElementById("qr-link").value = url;
-  openModal("modal-qr");
+/* ---------------- QR board ---------------- */
+async function doAddQrItem(){
+  const nameInput = document.getElementById("qr-item-name");
+  const fileInput = document.getElementById("qr-item-file");
+  const status = document.getElementById("qr-add-status");
+  const name = nameInput.value.trim();
+  const file = fileInput.files[0];
+  if(!name || !file){ status.textContent = "Нэр болон зураг хоёуланг нь оруулна уу."; return; }
+  const id = uid();
+  const ext = extOf(file.name) || "png";
+  const path = `qr/${id}.${ext}`;
+  status.textContent = "Хуулж байна…";
+  const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, file, { contentType: file.type || "image/png" });
+  if(upErr){ status.textContent = "Алдаа: " + upErr.message; return; }
+  const { error: dbErr } = await supabase.from("qr_items").insert({ id, name, storage_path: path });
+  if(dbErr){
+    await supabase.storage.from(BUCKET).remove([path]);
+    status.textContent = "Алдаа: " + dbErr.message;
+    return;
+  }
+  status.textContent = "";
+  nameInput.value = "";
+  fileInput.value = "";
+  closeModal("modal-qr-add");
+}
+async function deleteQrItem(id){
+  const item = qrItemById(id);
+  if(!item) return;
+  if(!confirm(`"${item.name}" QR-г устгах уу?`)) return;
+  const { error: rmErr } = await supabase.storage.from(BUCKET).remove([item.storage_path]);
+  if(rmErr){ showToast("Устгахад алдаа: " + rmErr.message, true); return; }
+  const { error: dbErr } = await supabase.from("qr_items").delete().eq("id", id);
+  if(dbErr){ showToast("Устгахад алдаа: " + dbErr.message, true); return; }
 }
 
-/* ---------------- viewer ---------------- */
+/* ---------------- file viewer ---------------- */
 function closeViewer(){
   const f = fileById(currentFileId());
   location.hash = "f=" + encodeURIComponent(f ? f.folder_id : "root");
@@ -355,11 +421,10 @@ async function openViewer(fileId){
   const meta = typeMeta(f ? f.ext : "");
   document.getElementById("viewer-badge").innerHTML = `<span class="badge" style="background:${meta.bg}">${meta.label}</span>`;
   document.getElementById("viewer-name").textContent = f ? f.name : "Файл олдсонгүй";
-  document.getElementById("viewer-qr-btn").onclick = ()=> f && openQr(f.id);
   body.innerHTML = `<div class="center-card">Ачааллаж байна…</div>`;
   if(!f){ body.innerHTML = `<div class="center-card">Энэ файл олдсонгүй. Устгагдсан байж магадгүй.</div>`; return; }
 
-  const url = publicUrlFor(f);
+  const url = publicUrlFor(f.storage_path);
   try{
     if(["png","jpg","jpeg","gif","webp","svg"].includes(f.ext)){
       body.innerHTML = `<img class="preview" src="${url}" alt="${escapeHtml(f.name)}" />`;
@@ -401,7 +466,6 @@ async function openViewer(fileId){
   }
 }
 
-
 /* ---------------- static event wiring ---------------- */
 function wireStaticEvents(){
   document.getElementById("gate-btn").addEventListener("click", tryUnlock);
@@ -428,12 +492,15 @@ function wireStaticEvents(){
   });
   document.getElementById("upload-go").addEventListener("click", doUpload);
 
-  document.getElementById("rename-go").addEventListener("click", doRename);
-  document.getElementById("qr-copy-btn").addEventListener("click", ()=>{
-    const el = document.getElementById("qr-link");
-    el.select();
-    navigator.clipboard && navigator.clipboard.writeText(el.value);
+  document.getElementById("qr-add-btn").addEventListener("click", ()=>{
+    document.getElementById("qr-item-name").value = "";
+    document.getElementById("qr-item-file").value = "";
+    document.getElementById("qr-add-status").textContent = "";
+    openModal("modal-qr-add");
   });
+  document.getElementById("qr-add-go").addEventListener("click", doAddQrItem);
+
+  document.getElementById("rename-go").addEventListener("click", doRename);
   document.getElementById("viewer-close-btn").addEventListener("click", closeViewer);
 
   document.querySelectorAll("[data-close]").forEach(el=>
