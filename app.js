@@ -83,8 +83,24 @@ async function loadCalendarState(){
   if(error){ showToast("Хуанли ачаалахад алдаа: " + error.message, true); return; }
   if(data){
     calState = { startYear: data.start_year, categories: data.categories, events: data.events };
+    render();
+    return;
   }
+  if(session){ await seedCalendarState(); }
   render();
+}
+// Анхны ангилал/бичлэгүүдийг эх HTML-ээс задалсан статик JSON-оос уншиж,
+// хүснэгт хоосон үед (зөвхөн 1 удаа) админ орж ирэхэд нь автоматаар бөглөнө —
+// хэт урт SQL мөр гараар хуулахад тасардаг асуудлаас зайлсхийсэн.
+async function seedCalendarState(){
+  try{
+    const seed = await (await fetch("./assets/calendar/seed-state.json")).json();
+    calState = seed;
+    const { error } = await supabase.from("calendar_state").insert({
+      id: "main", start_year: seed.startYear, categories: seed.categories, events: seed.events,
+    });
+    if(error){ showToast("Хуанли эхлүүлэхэд алдаа: " + error.message, true); }
+  }catch(e){ showToast("Хуанли эхлүүлэхэд алдаа: " + e.message, true); }
 }
 async function saveCalendarState(){
   const note = document.getElementById("cal-save-note");
