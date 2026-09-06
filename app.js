@@ -371,8 +371,10 @@ async function openViewer(fileId){
     }
     if(f.ext==="docx"){
       const buf = await (await fetch(url)).arrayBuffer();
-      const out = await mammoth.convertToHtml({ arrayBuffer: buf });
-      body.innerHTML = `<div class="doc-sheet">${out.value || "<p>(хоосон баримт)</p>"}</div>`;
+      body.innerHTML = `<div class="docx-viewport"><div id="docx-style-host" hidden></div><div id="docx-render-host"></div></div>`;
+      await docx.renderAsync(buf, document.getElementById("docx-render-host"), document.getElementById("docx-style-host"), {
+        inWrapper: true, breakPages: true, ignoreLastRenderedPageBreak: true,
+      });
       return;
     }
     if(f.ext==="xlsx" || f.ext==="xls"){
