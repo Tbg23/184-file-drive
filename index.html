@@ -7,7 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Source+Sans+3:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@500;600;700;800&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./style.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 <body>
 
@@ -27,6 +29,7 @@
     <div class="brand"><div class="dot"></div>184 Файлын сан</div>
     <a href="#f=root" class="side-link" data-nav="root">🏠 Нүүр</a>
     <a href="#qr" class="side-link" data-nav="qr">🔳 QR самбар</a>
+    <a href="#calendar" class="side-link" data-nav="calendar">📅 Хуанли</a>
     <div class="side-sep"></div>
     <div class="side-label">Фолдерууд</div>
     <div id="side-folders"></div>
@@ -59,6 +62,58 @@
       </div>
       <p class="hint" style="margin:-8px 0 16px;">Нэрээ олоод, QR-аа утасны камераар уншуулж жагсаалт/журмаа нээнэ үү.</p>
       <div id="qr-grid" class="qr-grid"></div>
+    </div>
+    <div id="calendar-view" hidden>
+      <div class="cal-wrap">
+        <img class="cal-corner-sticker cal-corner-topleft" src="./assets/calendar/sticker-corner-topleft.png" alt="">
+        <img class="cal-corner-sticker cal-corner-bottomleft" src="./assets/calendar/sticker-corner-bottomleft.png" alt="">
+        <img class="cal-corner-sticker cal-corner-bottomright" src="./assets/calendar/sticker-corner-bottomright.png" alt="">
+        <div class="cal-masthead">
+          <img class="cal-logo" src="./assets/calendar/logo-school.png" alt="Сургуулийн лого">
+          <div class="cal-titles">
+            <span class="cal-eyebrow">Нийслэлийн ерөнхий боловсролын 184-р сургууль</span>
+            <h1>Хичээлийн <span class="cal-accent">жилийн</span> хуанли</h1>
+          </div>
+          <img class="cal-accreditation" src="./assets/calendar/logo-iso21001.png" alt="ISO 21001:2025">
+          <img class="cal-sticker-wave" src="./assets/calendar/sticker-wave.png" alt="">
+        </div>
+        <div class="cal-layout">
+          <div style="position:relative;">
+            <div class="cal-months" id="cal-months-grid"></div>
+            <div class="cal-save-note" id="cal-save-note" hidden></div>
+          </div>
+          <div class="cal-sidebar">
+            <div class="cal-year-title">
+              <span class="cal-eyebrow">Хичээлийн жил</span>
+              <span class="cal-big" id="cal-year-big">2026</span>
+              <div class="cal-year-input-row" id="cal-year-row" hidden>
+                <span>Эхлэх жил</span>
+                <input type="number" id="cal-year-input">
+              </div>
+            </div>
+            <div class="cal-panel">
+              <div class="cal-panel-heading-row">
+                <img class="cal-panel-icon" src="./assets/calendar/panel-icon-category.png" alt="">
+                <h3>АНГИЛАЛ</h3>
+              </div>
+              <div class="cal-cat-grid" id="cal-cat-grid"></div>
+              <button class="cal-add-cat-btn" id="cal-add-category-btn" hidden>+ Ангилал нэмэх</button>
+            </div>
+            <div class="cal-panel">
+              <h3>ХУВААЛЦАХ / ТАТАХ</h3>
+              <button class="cal-add-cat-btn cal-btn-solid-deep" id="cal-image-btn">🖼️ Зураг (PNG) татах</button>
+              <button class="cal-add-cat-btn cal-btn-outline" id="cal-print-btn">🖨️ Хэвлэх / PDF болгох</button>
+            </div>
+            <div class="cal-panel">
+              <div class="cal-panel-heading-row">
+                <img class="cal-panel-icon" src="./assets/calendar/panel-icon-records.png" alt="">
+                <h3>ОН ЖИЛИЙН БҮХ БИЧЛЭГ</h3>
+              </div>
+              <ul class="cal-content-list" id="cal-content-list"></ul>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </main>
 </div>
@@ -136,6 +191,16 @@
       <button class="btn-primary" id="qr-add-go">Нэмэх</button>
     </div>
   </div>
+</div>
+
+<!-- Calendar: day entry modal -->
+<div class="overlay" id="modal-cal-day">
+  <div class="modal" id="cal-day-modal"></div>
+</div>
+
+<!-- Calendar: category manager modal -->
+<div class="overlay" id="modal-cal-category">
+  <div class="modal" id="cal-category-modal"></div>
 </div>
 
 <!-- File viewer -->

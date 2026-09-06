@@ -7,7 +7,12 @@ const BUCKET = "files";
 let folders = [];
 let files = [];
 let qrItems = [];
+let calState = null;
 let session = null;
+
+const MN_MONTHS = ["1-Р САР","2-Р САР","3-Р САР","4-Р САР","5-Р САР","6-Р САР","7-Р САР","8-Р САР","9-Р САР","10-Р САР","11-Р САР","12-Р САР"];
+const MN_DAYS = ["ДА","МЯ","ЛХ","ПҮ","БА","БЯ","НЯ"];
+const CAL_MONTH_MASCOTS = Array.from({length:12}, (_,i)=> `./assets/calendar/month-mascot-${String(i+1).padStart(2,"0")}.png`);
 
 const TYPE_META = {
   doc:{bg:"#2B579A",label:"W"}, docx:{bg:"#2B579A",label:"W"},
@@ -73,6 +78,25 @@ async function loadQrItems(){
   qrItems = data || [];
   render();
 }
+async function loadCalendarState(){
+  const { data, error } = await supabase.from("calendar_state").select("*").eq("id","main").maybeSingle();
+  if(error){ showToast("Хуанли ачаалахад алдаа: " + error.message, true); return; }
+  if(data){
+    calState = { startYear: data.start_year, categories: data.categories, events: data.events };
+  }
+  render();
+}
+async function saveCalendarState(){
+  const note = document.getElementById("cal-save-note");
+  note.hidden = false;
+  note.textContent = "Хадгалж байна…";
+  const { error } = await supabase.from("calendar_state").update({
+    start_year: calState.startYear, categories: calState.categories, events: calState.events,
+    updated_at: new Date().toISOString(),
+  }).eq("id","main");
+  if(error){ note.textContent = "Алдаа гарлаа"; showToast("Хуанли хадгалахад алдаа: " + error.message, true); return; }
+  note.textContent = "Хадгалагдсан";
+}
 function folderById(id){ return folders.find(x=>x.id===id); }
 function childFolders(id){ return folders.filter(x=>x.parent_id===id); }
 function filesIn(id){ return files.filter(x=>x.folder_id===id); }
@@ -95,7 +119,7 @@ async function boot(){
 
   if(localStorage.getItem("iso184_unlocked") === "1") showApp();
 
-  await Promise.all([loadData(), loadQrItems()]);
+  await Promise.all([loadData(), loadQrItems(), loadCalendarState()]);
   updateAdminUI();
 
   supabase
@@ -103,6 +127,7 @@ async function boot(){
     .on("postgres_changes", { event:"*", schema:"public", table:"files" }, loadData)
     .on("postgres_changes", { event:"*", schema:"public", table:"folders" }, loadData)
     .on("postgres_changes", { event:"*", schema:"public", table:"qr_items" }, loadQrItems)
+    .on("postgres_changes", { event:"*", schema:"public", table:"calendar_state" }, loadCalendarState)
     .subscribe();
 
   window.addEventListener("hashchange", render);
@@ -151,6 +176,7 @@ async function adminLogin(){
 
 /* ---------------- routing helpers ---------------- */
 function isQrRoute(){ return location.hash === "#qr"; }
+function isCalendarRoute(){ return location.hash === "#calendar"; }
 function currentFolderId(){
   const m = /f=([^&]+)/.exec(location.hash);
   return m ? decodeURIComponent(m[1]) : "root";
@@ -171,10 +197,19 @@ function render(){
   if(!document.getElementById("app").classList.contains("show")) return;
 
   const qrRoute = isQrRoute();
-  document.getElementById("folder-view").hidden = qrRoute;
+  const calRoute = isCalendarRoute();
+  document.getElementById("folder-view").hidden = qrRoute || calRoute;
   document.getElementById("qr-view").hidden = !qrRoute;
+  document.getElementById("calendar-view").hidden = !calRoute;
 
   renderSidebar();
+
+  if(calRoute){
+    document.querySelectorAll(".side-link").forEach(a=>a.classList.toggle("active", a.dataset.nav==="calendar"));
+    document.getElementById("viewer").classList.remove("show");
+    renderCalendar();
+    return;
+  }
 
   if(qrRoute){
     document.querySelectorAll(".side-link").forEach(a=>a.classList.toggle("active", a.dataset.nav==="qr"));
@@ -291,6 +326,367 @@ function renderQrGrid(){
     el.addEventListener("click", ()=> openRename("qr", el.dataset.qrRename)));
   grid.querySelectorAll("[data-qr-delete]").forEach(el=>
     el.addEventListener("click", ()=> deleteQrItem(el.dataset.qrDelete)));
+}
+
+/* ---------------- calendar (Хуанли) ---------------- */
+function calMonthSequence(startYear){
+  const seq = [];
+  for(let i=8;i<20;i++){
+    const m = i % 12;
+    const y = startYear + Math.floor(i/12);
+    seq.push({month:m, year:y});
+  }
+  return seq;
+}
+function calDaysInMonth(y,m){ return new Date(y, m+1, 0).getDate(); }
+function calFirstWeekdayMon0(y,m){ let d = new Date(y,m,1).getDay(); return (d+6)%7; }
+function calKeyOf(y,m,d){ return `${y}-${m}-${d}`; }
+
+// Collapses the same task repeated on consecutive days into a single row
+// with a day range, tracking each (title, category) pair independently so
+// interleaved tasks from different categories on the same days still group correctly.
+function calGroupConsecutiveEvents(monthEvents){
+  const sorted = [...monthEvents].sort((a,b)=> a.d-b.d);
+  const active = new Map();
+  const finished = [];
+  for(const {d, ev} of sorted){
+    const key = ev.title + '||' + ev.catId;
+    const grp = active.get(key);
+    if(grp && d === grp.endDay+1){
+      grp.endDay = d;
+      grp.ids.push({d, id: ev.id});
+    } else {
+      if(grp) finished.push(grp);
+      active.set(key, {title: ev.title, catId: ev.catId, startDay: d, endDay: d, ids: [{d, id: ev.id}]});
+    }
+  }
+  active.forEach(g=> finished.push(g));
+  finished.sort((a,b)=> a.startDay - b.startDay);
+  return finished;
+}
+
+// Builds a small absolutely-positioned swatch grid so a day with several
+// activities shows each category as its own tidy block instead of blending colors.
+function calBuildQuadrantSwatches(cats){
+  const wrap = document.createElement('div');
+  wrap.className = 'cal-swatches';
+  const list = cats.slice(0,4);
+  const mk = (color)=>{ const s=document.createElement('span'); s.style.background=color; return s; };
+
+  if(list.length===1){
+    wrap.style.gridTemplateColumns = '1fr';
+    wrap.style.gridTemplateRows = '1fr';
+    wrap.appendChild(mk(list[0].color));
+  } else if(list.length===2){
+    wrap.style.gridTemplateColumns = '1fr 1fr';
+    wrap.style.gridTemplateRows = '1fr';
+    list.forEach(c=>wrap.appendChild(mk(c.color)));
+  } else if(list.length===3){
+    wrap.style.gridTemplateColumns = '1fr 1fr';
+    wrap.style.gridTemplateRows = '1fr 1fr';
+    wrap.appendChild(mk(list[0].color));
+    wrap.appendChild(mk(list[1].color));
+    const bottom = mk(list[2].color);
+    bottom.style.gridColumn = '1 / span 2';
+    wrap.appendChild(bottom);
+  } else {
+    wrap.style.gridTemplateColumns = '1fr 1fr';
+    wrap.style.gridTemplateRows = '1fr 1fr';
+    list.forEach(c=>wrap.appendChild(mk(c.color)));
+  }
+  return wrap;
+}
+
+function renderCalendar(){
+  if(!calState){
+    document.getElementById("cal-months-grid").innerHTML = `<div class="empty">Ачааллаж байна…</div>`;
+    return;
+  }
+  const isAdmin = !!session;
+  document.getElementById("cal-year-big").textContent = `${calState.startYear}–${calState.startYear+1}`;
+  document.getElementById("cal-year-row").hidden = !isAdmin;
+  document.getElementById("cal-year-input").value = calState.startYear;
+  document.getElementById("cal-add-category-btn").hidden = !isAdmin;
+  renderCalCategoryPanel(isAdmin);
+  renderCalMonths(isAdmin);
+  renderCalContentList();
+}
+
+function renderCalCategoryPanel(isAdmin){
+  const grid = document.getElementById("cal-cat-grid");
+  grid.innerHTML = calState.categories.map(cat=>`
+    <div class="cal-cat-pill" style="background:${cat.color}">
+      ${escapeHtml(cat.name)}
+      ${isAdmin ? `<button class="cal-cat-del" data-del-cat="${cat.id}">✕</button>` : ``}
+    </div>`).join("");
+  if(isAdmin){
+    grid.querySelectorAll("[data-del-cat]").forEach(btn=>
+      btn.addEventListener("click", (e)=>{ e.stopPropagation(); deleteCalCategory(btn.dataset.delCat); }));
+  }
+}
+
+async function deleteCalCategory(id){
+  if(calState.categories.length<=1){ showToast("Дор хаяж нэг ангилал байх ёстой.", true); return; }
+  if(!confirm('Энэ ангиллыг устгах уу? Холбогдох үйл явдлууд ч устана.')) return;
+  calState.categories = calState.categories.filter(c=>c.id!==id);
+  Object.keys(calState.events).forEach(k=>{
+    calState.events[k] = calState.events[k].filter(e=>e.catId!==id);
+    if(calState.events[k].length===0) delete calState.events[k];
+  });
+  await saveCalendarState();
+  renderCalendar();
+}
+
+function renderCalMonths(isAdmin){
+  const grid = document.getElementById("cal-months-grid");
+  grid.innerHTML = '';
+  const seq = calMonthSequence(calState.startYear);
+
+  seq.forEach(({month,year}, idx)=>{
+    const wrap = document.createElement('div');
+    wrap.className = 'cal-month-wrap';
+
+    const mascot = document.createElement('img');
+    mascot.className = 'cal-month-mascot';
+    mascot.src = CAL_MONTH_MASCOTS[idx % CAL_MONTH_MASCOTS.length];
+    mascot.alt = '';
+    wrap.appendChild(mascot);
+
+    const card = document.createElement('div');
+    card.className = 'cal-month-card';
+
+    const head = document.createElement('div');
+    head.className = 'cal-month-head';
+    head.innerHTML = `<h2>${MN_MONTHS[month]}</h2><span class="cal-idx">${year}</span>`;
+    card.appendChild(head);
+
+    const wdRow = document.createElement('div');
+    wdRow.className = 'cal-weekday-row';
+    MN_DAYS.forEach(d=>{ const s=document.createElement('span'); s.textContent=d; wdRow.appendChild(s); });
+    card.appendChild(wdRow);
+
+    const cells = document.createElement('div');
+    cells.className = 'cal-grid-cells';
+    const firstDay = calFirstWeekdayMon0(year,month);
+    const numDays = calDaysInMonth(year,month);
+    for(let i=0;i<firstDay;i++){ const c=document.createElement('div'); c.className='cal-cell cal-empty-cell'; cells.appendChild(c); }
+    for(let d=1; d<=numDays; d++){
+      const c = document.createElement('div');
+      const dayEvents = calState.events[calKeyOf(year,month,d)] || [];
+      const cats = dayEvents.map(ev=>calState.categories.find(cc=>cc.id===ev.catId)).filter(Boolean);
+      c.className = 'cal-cell' + (cats.length ? ' cal-filled' : '');
+      if(cats.length){
+        c.appendChild(calBuildQuadrantSwatches(cats));
+      }
+      const num = document.createElement('div');
+      num.className = 'cal-num'; num.textContent = d;
+      c.appendChild(num);
+      if(isAdmin){ c.onclick = ()=>openCalDayModal(year,month,d); }
+      else { c.style.cursor = 'default'; }
+      cells.appendChild(c);
+    }
+    card.appendChild(cells);
+
+    const evList = document.createElement('div');
+    evList.className = 'cal-month-events';
+    const monthEvents = [];
+    for(let d=1; d<=numDays; d++){
+      (calState.events[calKeyOf(year,month,d)]||[]).forEach(ev=> monthEvents.push({d,ev}));
+    }
+    const grouped = calGroupConsecutiveEvents(monthEvents);
+    if(grouped.length===0){
+      evList.innerHTML = '<div class="cal-no-ev">Бичлэг алга</div>';
+    }else{
+      grouped.forEach(g=>{
+        const cat = calState.categories.find(c=>c.id===g.catId);
+        const row = document.createElement('div');
+        row.className = 'cal-ev-row';
+        const dayLabel = g.startDay===g.endDay ? `${g.startDay}` : `${g.startDay}-${g.endDay}`;
+        row.innerHTML = `<span class="cal-dnum" style="background:${cat?cat.color:'#5b7ce0'}">${dayLabel}</span><span class="cal-title">${escapeHtml(g.title)}</span>`;
+        if(isAdmin){
+          const del = document.createElement('button');
+          del.textContent = '✕';
+          del.onclick = ()=>{ g.ids.forEach(({d,id})=> removeCalEvent(year,month,d,id)); };
+          row.appendChild(del);
+        }
+        evList.appendChild(row);
+      });
+    }
+    card.appendChild(evList);
+
+    wrap.appendChild(card);
+    grid.appendChild(wrap);
+  });
+}
+
+function renderCalContentList(){
+  const list = document.getElementById("cal-content-list");
+  list.innerHTML = '';
+  const seq = calMonthSequence(calState.startYear);
+  const all = [];
+  seq.forEach(({month,year})=>{
+    const numDays = calDaysInMonth(year,month);
+    for(let d=1; d<=numDays; d++){
+      (calState.events[calKeyOf(year,month,d)]||[]).forEach(ev=>{
+        all.push({y:year,m:month,d,ev});
+      });
+    }
+  });
+  if(all.length===0){
+    list.innerHTML = '<li class="cal-empty-note">Одоогоор бичлэг алга</li>';
+    return;
+  }
+  all.forEach(({y,m,d,ev})=>{
+    const cat = calState.categories.find(c=>c.id===ev.catId);
+    const li = document.createElement('li');
+    li.style.setProperty('--dot', cat?cat.color:'#5b7ce0');
+    li.innerHTML = `${escapeHtml(ev.title)}<span class="cal-when">${d} ${MN_MONTHS[m]}</span>`;
+    list.appendChild(li);
+  });
+}
+
+function openCalDayModal(y,m,d){
+  const dateStr = `${d} ${MN_MONTHS[m]} ${y}`;
+  const existing = calState.events[calKeyOf(y,m,d)] || [];
+
+  const existingHtml = existing.length ? existing.map(ev=>{
+    const cat = calState.categories.find(c=>c.id===ev.catId);
+    return `<div class="cal-event-row" data-evid="${ev.id}"><span class="cal-tag" style="background:${cat?cat.color:'#999'}"></span><span class="cal-ev-title">${escapeHtml(ev.title)}</span><button class="icon-btn danger" data-rm-ev="${ev.id}">✕</button></div>`;
+  }).join('') : '<p class="hint">Одоогоор бичлэг алга</p>';
+
+  const modal = document.getElementById("cal-day-modal");
+  modal.innerHTML = `
+    <h2>Шинэ бичлэг</h2>
+    <p class="hint">${dateStr}</p>
+    <div class="cal-existing">${existingHtml}</div>
+    <label>Гарчиг</label>
+    <input type="text" id="cal-ev-title" placeholder="Жишээ: Эцэг эхийн уулзалт" maxlength="60">
+    <label>Ангилал</label>
+    <div class="cal-cat-picker" id="cal-cat-picker"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost" id="cal-day-cancel">Хаах</button>
+      <button class="btn-primary" id="cal-day-save">Нэмэх</button>
+    </div>
+  `;
+
+  modal.querySelectorAll("[data-rm-ev]").forEach(btn=>
+    btn.addEventListener("click", async ()=>{ await removeCalEvent(y,m,d,btn.dataset.rmEv); openCalDayModal(y,m,d); }));
+
+  let selectedCat = calState.categories[0]?.id;
+  const picker = modal.querySelector("#cal-cat-picker");
+  calState.categories.forEach(cat=>{
+    const chip = document.createElement('div');
+    chip.className = 'cal-cat-chip' + (cat.id===selectedCat ? ' selected' : '');
+    chip.style.background = cat.color;
+    chip.textContent = cat.name;
+    chip.onclick = ()=>{
+      selectedCat = cat.id;
+      [...picker.children].forEach(c=>c.classList.remove('selected'));
+      chip.classList.add('selected');
+    };
+    picker.appendChild(chip);
+  });
+
+  modal.querySelector("#cal-day-cancel").onclick = ()=> closeModal("modal-cal-day");
+  modal.querySelector("#cal-day-save").onclick = async ()=>{
+    const titleInput = modal.querySelector("#cal-ev-title");
+    const title = titleInput.value.trim();
+    if(!title){ titleInput.focus(); return; }
+    const k = calKeyOf(y,m,d);
+    if(!calState.events[k]) calState.events[k] = [];
+    calState.events[k].push({ id: uid(), title, catId: selectedCat });
+    await saveCalendarState();
+    renderCalendar();
+    closeModal("modal-cal-day");
+  };
+
+  openModal("modal-cal-day");
+}
+
+async function removeCalEvent(y,m,d,evId){
+  const k = calKeyOf(y,m,d);
+  calState.events[k] = (calState.events[k]||[]).filter(e=>e.id!==evId);
+  if(calState.events[k].length===0) delete calState.events[k];
+  await saveCalendarState();
+  renderCalendar();
+}
+
+function openCalCategoryManager(){
+  const modal = document.getElementById("cal-category-modal");
+  modal.innerHTML = `
+    <h2>Ангилал удирдах</h2>
+    <div id="cal-cat-list"></div>
+    <div class="cal-cat-manager-row" style="margin-top:14px;">
+      <input type="color" id="cal-new-cat-color" value="#5b7ce0">
+      <input type="text" id="cal-new-cat-name" placeholder="Шинэ ангиллын нэр">
+    </div>
+    <button class="btn-ghost" id="cal-add-cat-go" style="width:100%;justify-content:center;margin-top:8px;">+ Ангилал нэмэх</button>
+    <div class="modal-actions">
+      <button class="btn-ghost" id="cal-category-close">Хаах</button>
+    </div>
+  `;
+  const list = modal.querySelector("#cal-cat-list");
+  calState.categories.forEach(cat=>{
+    const row = document.createElement('div');
+    row.className = 'cal-cat-manager-row';
+    row.innerHTML = `<input type="color" value="${cat.color}" data-id="${cat.id}" class="cal-cat-color-input">
+                      <input type="text" value="${escapeHtml(cat.name)}" data-id="${cat.id}" class="cal-cat-name-input">`;
+    list.appendChild(row);
+  });
+  list.querySelectorAll(".cal-cat-color-input").forEach(inp=>{
+    inp.oninput = async ()=>{
+      const cat = calState.categories.find(c=>c.id===inp.dataset.id);
+      cat.color = inp.value;
+      await saveCalendarState();
+      renderCalendar();
+    };
+  });
+  list.querySelectorAll(".cal-cat-name-input").forEach(inp=>{
+    inp.onchange = async ()=>{
+      const cat = calState.categories.find(c=>c.id===inp.dataset.id);
+      cat.name = inp.value.trim() || cat.name;
+      await saveCalendarState();
+      renderCalendar();
+    };
+  });
+  modal.querySelector("#cal-add-cat-go").onclick = async ()=>{
+    const name = modal.querySelector("#cal-new-cat-name").value.trim();
+    const color = modal.querySelector("#cal-new-cat-color").value;
+    if(!name) return;
+    calState.categories.push({ id: uid(), name, color });
+    await saveCalendarState();
+    renderCalendar();
+    openCalCategoryManager();
+  };
+  modal.querySelector("#cal-category-close").onclick = ()=> closeModal("modal-cal-category");
+  openModal("modal-cal-category");
+}
+
+async function exportCalImage(){
+  const btn = document.getElementById("cal-image-btn");
+  const oldText = btn.textContent;
+  btn.textContent = 'Зураг бэлдэж байна…';
+  btn.disabled = true;
+  try{
+    const target = document.querySelector("#calendar-view .cal-wrap");
+    const canvas = await html2canvas(target, { backgroundColor: '#eaf6ec', scale: 2, useCORS: true });
+    canvas.toBlob((blob)=>{
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `huanli-${calState.startYear}-${calState.startYear+1}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      btn.textContent = oldText;
+      btn.disabled = false;
+    });
+  }catch(err){
+    showToast("Зураг бэлдэхэд алдаа гарлаа: " + err.message, true);
+    btn.textContent = oldText;
+    btn.disabled = false;
+  }
 }
 
 /* ---------------- modals ---------------- */
@@ -502,6 +898,14 @@ function wireStaticEvents(){
 
   document.getElementById("rename-go").addEventListener("click", doRename);
   document.getElementById("viewer-close-btn").addEventListener("click", closeViewer);
+
+  document.getElementById("cal-add-category-btn").addEventListener("click", openCalCategoryManager);
+  document.getElementById("cal-year-input").addEventListener("change", async (e)=>{
+    const v = parseInt(e.target.value,10);
+    if(!isNaN(v)){ calState.startYear = v; await saveCalendarState(); renderCalendar(); }
+  });
+  document.getElementById("cal-image-btn").addEventListener("click", exportCalImage);
+  document.getElementById("cal-print-btn").addEventListener("click", ()=> window.print());
 
   document.querySelectorAll("[data-close]").forEach(el=>
     el.addEventListener("click", ()=> closeModal(el.dataset.close)));
