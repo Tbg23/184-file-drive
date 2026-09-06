@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="mn">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>184 Файлын сан</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Source+Sans+3:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./style.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+
+<div id="gate">
+  <div class="gate-card">
+    <div class="gate-mark">184</div>
+    <h1>184 ISO Файлын сан</h1>
+    <p>Үргэлжлүүлэхийн тулд багийн нэвтрэх кодоо оруулна уу.</p>
+    <input id="gate-input" type="text" placeholder="Нэвтрэх код" autocomplete="off" />
+    <button class="btn-primary" style="justify-content:center" id="gate-btn">Нэвтрэх</button>
+    <div class="gate-err" id="gate-err"></div>
+  </div>
+</div>
+
+<div id="app">
+  <aside>
+    <div class="brand"><div class="dot"></div>184 Файлын сан</div>
+    <a href="#f=root" class="side-link" data-nav="root">🏠 Нүүр</a>
+    <div class="side-sep"></div>
+    <div class="side-label">Фолдерууд</div>
+    <div id="side-folders"></div>
+    <div class="side-admin">
+      <div class="side-admin-status" id="admin-status">Зочин горим</div>
+      <button class="btn-ghost" id="admin-btn" style="width:100%;justify-content:center;">Админ нэвтрэх</button>
+    </div>
+  </aside>
+  <main>
+    <div class="topbar">
+      <div class="crumbs" id="crumbs"></div>
+      <div class="actions" id="admin-actions" hidden>
+        <button class="btn-ghost" id="new-folder-btn">📁 Шинэ фолдер</button>
+        <button class="btn-primary" id="upload-btn">⬆ Файл нэмэх</button>
+      </div>
+    </div>
+    <div class="search">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="search-input" placeholder="Энэ фолдероос хайх…" />
+    </div>
+    <div id="listing"></div>
+  </main>
+</div>
+
+<!-- Admin login modal -->
+<div class="overlay" id="modal-admin">
+  <div class="modal">
+    <h2>Админ нэвтрэх</h2>
+    <p class="hint">Файл нэмэх, устгах, нэр солихын тулд Supabase-д бүртгэсэн админ имэйл/нууц үгээ оруулна уу.</p>
+    <label>Имэйл</label>
+    <input type="email" id="admin-email" autocomplete="username" />
+    <label>Нууц үг</label>
+    <input type="password" id="admin-password" autocomplete="current-password" />
+    <div id="admin-login-status" class="hint" style="margin-top:8px;"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost" data-close="modal-admin">Болих</button>
+      <button class="btn-primary" id="admin-login-go">Нэвтрэх</button>
+    </div>
+  </div>
+</div>
+
+<!-- New folder modal -->
+<div class="overlay" id="modal-folder">
+  <div class="modal">
+    <h2>Шинэ фолдер</h2>
+    <p class="hint">Одоогийн фолдерт дэд фолдер үүсгэнэ.</p>
+    <label>Фолдерын нэр</label>
+    <input type="text" id="new-folder-name" placeholder="Жишээ: 10 бүлэг" />
+    <div class="modal-actions">
+      <button class="btn-ghost" data-close="modal-folder">Болих</button>
+      <button class="btn-primary" id="create-folder-go">Үүсгэх</button>
+    </div>
+  </div>
+</div>
+
+<!-- Upload modal -->
+<div class="overlay" id="modal-upload">
+  <div class="modal">
+    <h2>Файл нэмэх</h2>
+    <p class="hint">docx, xlsx, pdf, png/jpg, drawio, pptx зэрэг ямар ч төрлийн файл байршуулж болно. Олон файл зэрэг сонгож болно.</p>
+    <label>Файл сонгох</label>
+    <input type="file" id="file-input" multiple />
+    <div id="upload-status" class="hint" style="margin-top:10px;"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost" data-close="modal-upload">Болих</button>
+      <button class="btn-primary" id="upload-go">Хуулах</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rename modal -->
+<div class="overlay" id="modal-rename">
+  <div class="modal">
+    <h2>Нэр өөрчлөх</h2>
+    <input type="text" id="rename-input" style="margin-top:10px;" />
+    <div class="modal-actions">
+      <button class="btn-ghost" data-close="modal-rename">Болих</button>
+      <button class="btn-primary" id="rename-go">Хадгалах</button>
+    </div>
+  </div>
+</div>
+
+<!-- QR modal -->
+<div class="overlay" id="modal-qr">
+  <div class="modal" style="text-align:center;">
+    <h2 id="qr-title">Файл нээх QR</h2>
+    <p class="hint">Энэ кодыг уншуулахад тухайн файл шууд энэ сайт дээр нээгдэнэ.</p>
+    <div id="qrbox" style="display:flex;justify-content:center;margin:14px 0;"></div>
+    <div class="link-row">
+      <input type="text" id="qr-link" readonly />
+      <button class="btn-ghost" id="qr-copy-btn">Хуулах</button>
+    </div>
+    <div class="modal-actions" style="justify-content:center;">
+      <button class="btn-ghost" data-close="modal-qr">Хаах</button>
+    </div>
+  </div>
+</div>
+
+<!-- File viewer -->
+<div class="viewer-overlay" id="viewer">
+  <div class="viewer-top">
+    <div class="viewer-title"><span id="viewer-badge"></span><span id="viewer-name"></span></div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn-ghost" id="viewer-qr-btn">QR</button>
+      <button class="btn-ghost" id="viewer-close-btn">✕ Хаах</button>
+    </div>
+  </div>
+  <div class="viewer-body" id="viewer-body"></div>
+</div>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>
