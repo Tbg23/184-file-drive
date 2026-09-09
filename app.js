@@ -1035,13 +1035,40 @@ function openRename(type, id){
   const item = type === "qr" ? qrItemById(id) : fileById(id);
   if(!item) return;
   document.getElementById("rename-input").value = item.name;
+  document.getElementById("rename-status").textContent = "";
   openModal("modal-rename");
 }
 async function doRename(){
   const val = document.getElementById("rename-input").value.trim();
   if(!val || !renameTarget) return closeModal("modal-rename");
-  const table = renameTarget.type === "qr" ? "qr_items" : "files";
-  const { error } = await supabase.from(table).update({ name: val }).eq("id", renameTarget.id);
+  const status = document.getElementById("rename-status");
+  const goBtn = document.getElementById("rename-go");
+
+  if(renameTarget.type === "qr"){
+    const item = qrItemById(renameTarget.id);
+    if(item && item.target_url){
+      // The name is baked into the QR image itself, so renaming has to
+      // redraw and re-upload it too, not just update the name column.
+      status.textContent = "Зураг шинэчилж байна…";
+      goBtn.disabled = true;
+      await drawGeneratedQr(item.target_url, val);
+      const canvas = document.getElementById("qr-gen-canvas");
+      const blob = await new Promise(resolve=> canvas.toBlob(resolve, "image/png"));
+      if(blob){
+        const { error: upErr } = await supabase.storage.from(BUCKET)
+          .upload(item.storage_path, blob, { contentType: "image/png", upsert: true });
+        if(upErr){ status.textContent = ""; goBtn.disabled = false; showToast("Зураг шинэчлэхэд алдаа: " + upErr.message, true); return; }
+      }
+    }
+    const { error } = await supabase.from("qr_items").update({ name: val }).eq("id", renameTarget.id);
+    status.textContent = "";
+    goBtn.disabled = false;
+    if(error){ showToast("Нэр солиход алдаа: " + error.message, true); return; }
+    closeModal("modal-rename");
+    return;
+  }
+
+  const { error } = await supabase.from("files").update({ name: val }).eq("id", renameTarget.id);
   if(error){ showToast("Нэр солиход алдаа: " + error.message, true); return; }
   closeModal("modal-rename");
 }
@@ -1148,6 +1175,7 @@ function addGeneratedQrToBoard(){
   const nameInput = document.getElementById("qr-item-name");
   const status = document.getElementById("qr-add-status");
   const name = nameInput.value.trim();
+  const targetUrl = document.getElementById("qr-item-url").value.trim();
   if(!name){ status.textContent = "Нэр оруулна уу."; return; }
   const canvas = document.getElementById("qr-gen-canvas");
   status.textContent = "Хадгалж байна…";
@@ -1158,7 +1186,8 @@ function addGeneratedQrToBoard(){
     const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, blob, { contentType: "image/png" });
     if(upErr){ status.textContent = "Алдаа: " + upErr.message; return; }
     const nextPosition = qrItems.reduce((max,x)=> Math.max(max, x.position ?? 0), -1) + 1;
-    const { error: dbErr } = await supabase.from("qr_items").insert({ id, name, storage_path: path, position: nextPosition });
+    const { error: dbErr } = await supabase.from("qr_items")
+      .insert({ id, name, storage_path: path, position: nextPosition, target_url: targetUrl });
     if(dbErr){
       await supabase.storage.from(BUCKET).remove([path]);
       status.textContent = "Алдаа: " + dbErr.message;

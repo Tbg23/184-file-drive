@@ -59,6 +59,7 @@ create table if not exists qr_items (
   created_at timestamptz not null default now()
 );
 alter table qr_items add column if not exists position integer not null default 0;
+alter table qr_items add column if not exists target_url text;
 alter table qr_items enable row level security;
 create policy "public read qr_items" on qr_items for select using (true);
 create policy "authenticated write qr_items" on qr_items for all
