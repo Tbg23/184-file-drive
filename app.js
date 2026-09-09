@@ -414,13 +414,74 @@ function renderQrGrid(){
       </div>` : ``}
       <img src="${imgUrl}" alt="${escapeHtml(item.name)}" />
       <div class="qr-name">${escapeHtml(item.name)}</div>
+      <button type="button" class="qr-download-btn" data-qr-download="${item.id}">⬇ Татах (PNG)</button>
     </div>`;
   }).join("");
   grid.querySelectorAll("[data-qr-rename]").forEach(el=>
     el.addEventListener("click", ()=> openRename("qr", el.dataset.qrRename)));
   grid.querySelectorAll("[data-qr-delete]").forEach(el=>
     el.addEventListener("click", ()=> deleteQrItem(el.dataset.qrDelete)));
+  grid.querySelectorAll("[data-qr-download]").forEach(el=>
+    el.addEventListener("click", ()=> downloadQrItemImage(qrItemById(el.dataset.qrDownload), el)));
   if(isAdmin) wireQrDrag(grid);
+}
+
+// Draws the QR code together with its name into one canvas (name on top,
+// QR below) so the downloaded PNG is self-contained for printing/posting —
+// the stored QR file alone has no label on it.
+async function downloadQrItemImage(item, btn){
+  if(!item) return;
+  const oldText = btn ? btn.textContent : null;
+  if(btn){ btn.textContent = "Бэлдэж байна…"; btn.disabled = true; }
+  try{
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    await new Promise((resolve, reject)=>{
+      img.onload = resolve;
+      img.onerror = ()=> reject(new Error("Зураг ачаалж чадсангүй"));
+      img.src = publicUrlFor(item.storage_path);
+    });
+
+    const qrSize = 480, pad = 36, fontSize = 30, lineHeight = 38;
+
+    const mctx = document.createElement('canvas').getContext('2d');
+    mctx.font = `800 ${fontSize}px 'Noto Sans', sans-serif`;
+    const words = item.name.split(/\s+/);
+    const lines = [];
+    let line = "";
+    words.forEach(w=>{
+      const test = line ? line + " " + w : w;
+      if(mctx.measureText(test).width > qrSize && line){ lines.push(line); line = w; }
+      else { line = test; }
+    });
+    if(line) lines.push(line);
+
+    const titleHeight = lines.length * lineHeight;
+    const width = qrSize + pad*2;
+    const height = pad + titleHeight + 24 + qrSize + pad;
+
+    const canvas = document.createElement('canvas');
+    const scale = 2;
+    canvas.width = width*scale;
+    canvas.height = height*scale;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(scale, scale);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = "#155A2C";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.font = `800 ${fontSize}px 'Noto Sans', sans-serif`;
+    lines.forEach((l,i)=> ctx.fillText(l, width/2, pad + i*lineHeight));
+    ctx.drawImage(img, pad, pad + titleHeight + 24, qrSize, qrSize);
+
+    const safeName = item.name.replace(/[^\wа-яА-ЯёЁ0-9]+/g, "_").replace(/^_+|_+$/g, "") || "qr";
+    await downloadCanvas(canvas, `qr-${safeName}.png`);
+  }catch(err){
+    showToast("PNG бэлдэхэд алдаа гарлаа: " + err.message, true);
+  } finally {
+    if(btn){ btn.textContent = oldText; btn.disabled = false; }
+  }
 }
 
 let qrDragId = null;

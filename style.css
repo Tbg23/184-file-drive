@@ -183,6 +183,10 @@ embed.pdf-frame{width:100%;height:80vh;max-width:900px;border-radius:10px;border
 .qr-card:hover .qr-actions{opacity:1;}
 .qr-card[draggable="true"]{cursor:grab;}
 .qr-card.qr-dragging{opacity:.4;}
+.qr-download-btn{width:100%;padding:8px 12px;border-radius:9px;border:1.5px solid var(--border);
+  background:transparent;color:var(--text-dim);font-weight:700;font-size:12.5px;cursor:pointer;}
+.qr-download-btn:hover{background:var(--surface-2);color:var(--text);}
+.qr-download-btn:disabled{opacity:.6;cursor:default;}
 
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--surface);
   border:1.5px solid var(--border);color:var(--text);padding:12px 18px;border-radius:10px;
