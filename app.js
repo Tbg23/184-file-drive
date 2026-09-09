@@ -784,12 +784,16 @@ async function captureCalNode(sourceEl, { width, bg = "#ffffff" } = {}){
   normalizeCols(clone);
   clone.querySelectorAll && clone.querySelectorAll('.cal-months').forEach(normalizeCols);
   host.appendChild(clone);
-  document.body.appendChild(host);
+  // Append inside #calendar-view (not document.body) so the clone still inherits
+  // the --cal-* color variables scoped there — otherwise things like the month
+  // header's white text on var(--cal-blue) render invisible (white-on-transparent).
+  const calRoot = document.getElementById("calendar-view");
+  calRoot.appendChild(host);
   await new Promise(r=> requestAnimationFrame(()=> requestAnimationFrame(r)));
   try{
     return await html2canvas(clone, { backgroundColor: bg, scale: 2, useCORS: true });
   } finally {
-    document.body.removeChild(host);
+    calRoot.removeChild(host);
   }
 }
 
