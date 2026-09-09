@@ -1046,21 +1046,28 @@ async function doRename(){
 
   if(renameTarget.type === "qr"){
     const item = qrItemById(renameTarget.id);
+    const updates = { name: val };
     if(item && item.target_url){
       // The name is baked into the QR image itself, so renaming has to
       // redraw and re-upload it too, not just update the name column.
+      // Upload to a FRESH path rather than overwriting the old one — reusing
+      // the same path kept the old image showing due to browser/CDN caching
+      // on that URL even after the file underneath changed.
       status.textContent = "Зураг шинэчилж байна…";
       goBtn.disabled = true;
       await drawGeneratedQr(item.target_url, val);
       const canvas = document.getElementById("qr-gen-canvas");
       const blob = await new Promise(resolve=> canvas.toBlob(resolve, "image/png"));
       if(blob){
+        const newPath = `qr/${uid()}.png`;
         const { error: upErr } = await supabase.storage.from(BUCKET)
-          .upload(item.storage_path, blob, { contentType: "image/png", upsert: true });
+          .upload(newPath, blob, { contentType: "image/png" });
         if(upErr){ status.textContent = ""; goBtn.disabled = false; showToast("Зураг шинэчлэхэд алдаа: " + upErr.message, true); return; }
+        updates.storage_path = newPath;
+        await supabase.storage.from(BUCKET).remove([item.storage_path]);
       }
     }
-    const { error } = await supabase.from("qr_items").update({ name: val }).eq("id", renameTarget.id);
+    const { error } = await supabase.from("qr_items").update(updates).eq("id", renameTarget.id);
     status.textContent = "";
     goBtn.disabled = false;
     if(error){ showToast("Нэр солиход алдаа: " + error.message, true); return; }
