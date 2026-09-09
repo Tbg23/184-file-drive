@@ -89,6 +89,10 @@
         </div>
         <div class="cal-layout">
           <div style="position:relative;">
+            <div class="cal-view-toggle">
+              <button type="button" class="cal-toggle-btn active" id="cal-mode-months">Сараар</button>
+              <button type="button" class="cal-toggle-btn" id="cal-mode-quarters">Улирлаар</button>
+            </div>
             <div class="cal-months" id="cal-months-grid"></div>
             <div class="cal-save-note" id="cal-save-note" hidden></div>
           </div>
@@ -222,6 +226,17 @@
       <button class="btn-ghost" data-close="modal-qr-schedule">Болих</button>
       <button class="btn-primary" id="qr-sched-save">Хадгалах</button>
     </div>
+  </div>
+</div>
+
+<!-- Calendar: month zoom modal -->
+<div class="overlay" id="modal-cal-month-zoom">
+  <div class="modal cal-zoom-modal">
+    <div class="cal-zoom-actions">
+      <button class="btn-ghost" id="cal-zoom-png-btn">🖼️ PNG татах</button>
+      <button class="btn-ghost" data-close="modal-cal-month-zoom">✕ Хаах</button>
+    </div>
+    <div id="cal-zoom-body" class="cal-zoom-body"></div>
   </div>
 </div>
 

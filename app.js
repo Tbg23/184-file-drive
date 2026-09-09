@@ -9,6 +9,7 @@ let files = [];
 let qrItems = [];
 let qrSchedule = null;
 let calState = null;
+let calViewMode = "months"; // "months" | "quarters"
 let session = null;
 
 const MN_MONTHS = ["1-Р САР","2-Р САР","3-Р САР","4-Р САР","5-Р САР","6-Р САР","7-Р САР","8-Р САР","9-Р САР","10-Р САР","11-Р САР","12-Р САР"];
@@ -563,86 +564,152 @@ async function deleteCalCategory(id){
   renderCalendar();
 }
 
+function buildCalMonthCard(month, year, mascotIdx, isAdmin, zoomed){
+  const wrap = document.createElement('div');
+  wrap.className = 'cal-month-wrap';
+
+  const mascot = document.createElement('img');
+  mascot.className = 'cal-month-mascot';
+  mascot.src = CAL_MONTH_MASCOTS[mascotIdx % CAL_MONTH_MASCOTS.length];
+  mascot.alt = '';
+  wrap.appendChild(mascot);
+
+  const card = document.createElement('div');
+  card.className = 'cal-month-card' + (zoomed ? ' cal-zoomed' : '');
+
+  const head = document.createElement('div');
+  head.className = 'cal-month-head';
+  head.innerHTML = `<h2>${MN_MONTHS[month]}</h2><span class="cal-idx">${year}</span>`;
+  if(!zoomed){
+    head.title = 'Томруулж харах';
+    head.addEventListener('click', ()=> openCalMonthZoom(month, year, mascotIdx));
+  }
+  card.appendChild(head);
+
+  const wdRow = document.createElement('div');
+  wdRow.className = 'cal-weekday-row';
+  MN_DAYS.forEach(d=>{ const s=document.createElement('span'); s.textContent=d; wdRow.appendChild(s); });
+  card.appendChild(wdRow);
+
+  const cells = document.createElement('div');
+  cells.className = 'cal-grid-cells';
+  const firstDay = calFirstWeekdayMon0(year,month);
+  const numDays = calDaysInMonth(year,month);
+  for(let i=0;i<firstDay;i++){ const c=document.createElement('div'); c.className='cal-cell cal-empty-cell'; cells.appendChild(c); }
+  for(let d=1; d<=numDays; d++){
+    const c = document.createElement('div');
+    const dayEvents = calState.events[calKeyOf(year,month,d)] || [];
+    const cats = dayEvents.map(ev=>calState.categories.find(cc=>cc.id===ev.catId)).filter(Boolean);
+    c.className = 'cal-cell' + (cats.length ? ' cal-filled' : '');
+    if(cats.length){
+      c.appendChild(calBuildQuadrantSwatches(cats));
+    }
+    const num = document.createElement('div');
+    num.className = 'cal-num'; num.textContent = d;
+    c.appendChild(num);
+    if(isAdmin){ c.onclick = ()=>openCalDayModal(year,month,d); }
+    else { c.style.cursor = 'default'; }
+    cells.appendChild(c);
+  }
+  card.appendChild(cells);
+
+  const evList = document.createElement('div');
+  evList.className = 'cal-month-events';
+  const monthEvents = [];
+  for(let d=1; d<=numDays; d++){
+    (calState.events[calKeyOf(year,month,d)]||[]).forEach(ev=> monthEvents.push({d,ev}));
+  }
+  const grouped = calGroupConsecutiveEvents(monthEvents);
+  if(grouped.length===0){
+    evList.innerHTML = '<div class="cal-no-ev">Бичлэг алга</div>';
+  }else{
+    grouped.forEach(g=>{
+      const cat = calState.categories.find(c=>c.id===g.catId);
+      const row = document.createElement('div');
+      row.className = 'cal-ev-row';
+      const dayLabel = g.startDay===g.endDay ? `${g.startDay}` : `${g.startDay}-${g.endDay}`;
+      row.innerHTML = `<span class="cal-dnum" style="background:${cat?cat.color:'#5b7ce0'}">${dayLabel}</span><span class="cal-title">${escapeHtml(g.title)}</span>`;
+      if(isAdmin){
+        const del = document.createElement('button');
+        del.textContent = '✕';
+        del.onclick = ()=>{ g.ids.forEach(({d,id})=> removeCalEvent(year,month,d,id)); };
+        row.appendChild(del);
+      }
+      evList.appendChild(row);
+    });
+  }
+  card.appendChild(evList);
+
+  wrap.appendChild(card);
+  return wrap;
+}
+
+const CAL_QUARTER_LABELS = ["1-р улирал","2-р улирал","3-р улирал","4-р улирал"];
+
 function renderCalMonths(isAdmin){
+  document.getElementById("cal-mode-months").classList.toggle("active", calViewMode==="months");
+  document.getElementById("cal-mode-quarters").classList.toggle("active", calViewMode==="quarters");
+
   const grid = document.getElementById("cal-months-grid");
   grid.innerHTML = '';
   const seq = calMonthSequence(calState.startYear);
 
-  seq.forEach(({month,year}, idx)=>{
-    const wrap = document.createElement('div');
-    wrap.className = 'cal-month-wrap';
-
-    const mascot = document.createElement('img');
-    mascot.className = 'cal-month-mascot';
-    mascot.src = CAL_MONTH_MASCOTS[idx % CAL_MONTH_MASCOTS.length];
-    mascot.alt = '';
-    wrap.appendChild(mascot);
-
-    const card = document.createElement('div');
-    card.className = 'cal-month-card';
-
-    const head = document.createElement('div');
-    head.className = 'cal-month-head';
-    head.innerHTML = `<h2>${MN_MONTHS[month]}</h2><span class="cal-idx">${year}</span>`;
-    card.appendChild(head);
-
-    const wdRow = document.createElement('div');
-    wdRow.className = 'cal-weekday-row';
-    MN_DAYS.forEach(d=>{ const s=document.createElement('span'); s.textContent=d; wdRow.appendChild(s); });
-    card.appendChild(wdRow);
-
-    const cells = document.createElement('div');
-    cells.className = 'cal-grid-cells';
-    const firstDay = calFirstWeekdayMon0(year,month);
-    const numDays = calDaysInMonth(year,month);
-    for(let i=0;i<firstDay;i++){ const c=document.createElement('div'); c.className='cal-cell cal-empty-cell'; cells.appendChild(c); }
-    for(let d=1; d<=numDays; d++){
-      const c = document.createElement('div');
-      const dayEvents = calState.events[calKeyOf(year,month,d)] || [];
-      const cats = dayEvents.map(ev=>calState.categories.find(cc=>cc.id===ev.catId)).filter(Boolean);
-      c.className = 'cal-cell' + (cats.length ? ' cal-filled' : '');
-      if(cats.length){
-        c.appendChild(calBuildQuadrantSwatches(cats));
-      }
-      const num = document.createElement('div');
-      num.className = 'cal-num'; num.textContent = d;
-      c.appendChild(num);
-      if(isAdmin){ c.onclick = ()=>openCalDayModal(year,month,d); }
-      else { c.style.cursor = 'default'; }
-      cells.appendChild(c);
+  if(calViewMode === "quarters"){
+    grid.className = 'cal-quarters-wrap';
+    for(let g=0; g<4; g++){
+      const groupSeq = seq.slice(g*3, g*3+3);
+      const monthNames = groupSeq.map(({month})=>MN_MONTHS[month]).join(" · ");
+      const section = document.createElement('div');
+      section.className = 'cal-quarter-section';
+      section.innerHTML = `<div class="cal-quarter-heading">${CAL_QUARTER_LABELS[g]}<span class="cal-quarter-months">${monthNames}</span></div>`;
+      const qGrid = document.createElement('div');
+      qGrid.className = 'cal-months cal-months-quarter';
+      groupSeq.forEach(({month,year}, i)=> qGrid.appendChild(buildCalMonthCard(month, year, g*3+i, isAdmin, false)));
+      section.appendChild(qGrid);
+      grid.appendChild(section);
     }
-    card.appendChild(cells);
+    return;
+  }
 
-    const evList = document.createElement('div');
-    evList.className = 'cal-month-events';
-    const monthEvents = [];
-    for(let d=1; d<=numDays; d++){
-      (calState.events[calKeyOf(year,month,d)]||[]).forEach(ev=> monthEvents.push({d,ev}));
-    }
-    const grouped = calGroupConsecutiveEvents(monthEvents);
-    if(grouped.length===0){
-      evList.innerHTML = '<div class="cal-no-ev">Бичлэг алга</div>';
-    }else{
-      grouped.forEach(g=>{
-        const cat = calState.categories.find(c=>c.id===g.catId);
-        const row = document.createElement('div');
-        row.className = 'cal-ev-row';
-        const dayLabel = g.startDay===g.endDay ? `${g.startDay}` : `${g.startDay}-${g.endDay}`;
-        row.innerHTML = `<span class="cal-dnum" style="background:${cat?cat.color:'#5b7ce0'}">${dayLabel}</span><span class="cal-title">${escapeHtml(g.title)}</span>`;
-        if(isAdmin){
-          const del = document.createElement('button');
-          del.textContent = '✕';
-          del.onclick = ()=>{ g.ids.forEach(({d,id})=> removeCalEvent(year,month,d,id)); };
-          row.appendChild(del);
-        }
-        evList.appendChild(row);
-      });
-    }
-    card.appendChild(evList);
+  grid.className = 'cal-months';
+  seq.forEach(({month,year}, idx)=> grid.appendChild(buildCalMonthCard(month, year, idx, isAdmin, false)));
+}
 
-    wrap.appendChild(card);
-    grid.appendChild(wrap);
-  });
+let calZoomTarget = null;
+function openCalMonthZoom(month, year, mascotIdx){
+  calZoomTarget = { month, year };
+  const body = document.getElementById("cal-zoom-body");
+  body.innerHTML = '';
+  body.appendChild(buildCalMonthCard(month, year, mascotIdx, !!session, true));
+  openModal("modal-cal-month-zoom");
+}
+
+async function exportCalMonthImage(){
+  if(!calZoomTarget) return;
+  const btn = document.getElementById("cal-zoom-png-btn");
+  const oldText = btn.textContent;
+  btn.textContent = 'Зураг бэлдэж байна…';
+  btn.disabled = true;
+  try{
+    const target = document.querySelector("#cal-zoom-body .cal-month-card");
+    const canvas = await html2canvas(target, { backgroundColor: '#ffffff', scale: 2, useCORS: true });
+    canvas.toBlob((blob)=>{
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `huanli-${calZoomTarget.year}-${String(calZoomTarget.month+1).padStart(2,"0")}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      btn.textContent = oldText;
+      btn.disabled = false;
+    });
+  }catch(err){
+    showToast("Зураг бэлдэхэд алдаа гарлаа: " + err.message, true);
+    btn.textContent = oldText;
+    btn.disabled = false;
+  }
 }
 
 function renderCalContentList(){
@@ -1130,6 +1197,13 @@ function wireStaticEvents(){
   });
   document.getElementById("cal-image-btn").addEventListener("click", exportCalImage);
   document.getElementById("cal-print-btn").addEventListener("click", ()=> window.print());
+  document.getElementById("cal-mode-months").addEventListener("click", ()=>{
+    calViewMode = "months"; renderCalMonths(!!session);
+  });
+  document.getElementById("cal-mode-quarters").addEventListener("click", ()=>{
+    calViewMode = "quarters"; renderCalMonths(!!session);
+  });
+  document.getElementById("cal-zoom-png-btn").addEventListener("click", exportCalMonthImage);
 
   document.querySelectorAll("[data-close]").forEach(el=>
     el.addEventListener("click", ()=> closeModal(el.dataset.close)));
