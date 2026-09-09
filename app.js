@@ -408,13 +408,14 @@ function renderQrGrid(){
   grid.innerHTML = qrItems.map(item=>{
     const imgUrl = publicUrlFor(item.storage_path);
     return `<div class="qr-card" data-qr-id="${item.id}" draggable="${isAdmin}">
-      ${isAdmin ? `<div class="qr-actions">
-        <button class="icon-btn" title="Нэр солих" data-qr-rename="${item.id}">✎</button>
-        <button class="icon-btn danger" title="Устгах" data-qr-delete="${item.id}">✕</button>
-      </div>` : ``}
+      <div class="qr-actions">
+        <button class="icon-btn" title="Татах" data-qr-download="${item.id}">⬇</button>
+        ${isAdmin ? `
+          <button class="icon-btn" title="Нэр солих" data-qr-rename="${item.id}">✎</button>
+          <button class="icon-btn danger" title="Устгах" data-qr-delete="${item.id}">✕</button>
+        ` : ``}
+      </div>
       <img src="${imgUrl}" alt="${escapeHtml(item.name)}" />
-      <div class="qr-name">${escapeHtml(item.name)}</div>
-      <button type="button" class="qr-download-btn" data-qr-download="${item.id}">⬇ Татах (PNG)</button>
     </div>`;
   }).join("");
   grid.querySelectorAll("[data-qr-rename]").forEach(el=>
@@ -426,61 +427,28 @@ function renderQrGrid(){
   if(isAdmin) wireQrDrag(grid);
 }
 
-// Draws the QR code together with its name into one canvas (name on top,
-// QR below) so the downloaded PNG is self-contained for printing/posting —
-// the stored QR file alone has no label on it.
+// The name is baked into the QR image itself at generation time (see
+// drawGeneratedQr), so downloading is just saving the stored file as-is.
 async function downloadQrItemImage(item, btn){
   if(!item) return;
-  const oldText = btn ? btn.textContent : null;
-  if(btn){ btn.textContent = "Бэлдэж байна…"; btn.disabled = true; }
+  if(btn) btn.disabled = true;
   try{
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    await new Promise((resolve, reject)=>{
-      img.onload = resolve;
-      img.onerror = ()=> reject(new Error("Зураг ачаалж чадсангүй"));
-      img.src = publicUrlFor(item.storage_path);
-    });
-
-    const qrSize = 480, pad = 36, fontSize = 30, lineHeight = 38;
-
-    const mctx = document.createElement('canvas').getContext('2d');
-    mctx.font = `800 ${fontSize}px 'Noto Sans', sans-serif`;
-    const words = item.name.split(/\s+/);
-    const lines = [];
-    let line = "";
-    words.forEach(w=>{
-      const test = line ? line + " " + w : w;
-      if(mctx.measureText(test).width > qrSize && line){ lines.push(line); line = w; }
-      else { line = test; }
-    });
-    if(line) lines.push(line);
-
-    const titleHeight = lines.length * lineHeight;
-    const width = qrSize + pad*2;
-    const height = pad + titleHeight + 24 + qrSize + pad;
-
-    const canvas = document.createElement('canvas');
-    const scale = 2;
-    canvas.width = width*scale;
-    canvas.height = height*scale;
-    const ctx = canvas.getContext('2d');
-    ctx.scale(scale, scale);
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, width, height);
-    ctx.fillStyle = "#155A2C";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "top";
-    ctx.font = `800 ${fontSize}px 'Noto Sans', sans-serif`;
-    lines.forEach((l,i)=> ctx.fillText(l, width/2, pad + i*lineHeight));
-    ctx.drawImage(img, pad, pad + titleHeight + 24, qrSize, qrSize);
-
+    const res = await fetch(publicUrlFor(item.storage_path));
+    if(!res.ok) throw new Error("Файл татахад алдаа гарлаа");
+    const blob = await res.blob();
     const safeName = item.name.replace(/[^\wа-яА-ЯёЁ0-9]+/g, "_").replace(/^_+|_+$/g, "") || "qr";
-    await downloadCanvas(canvas, `qr-${safeName}.png`);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `qr-${safeName}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }catch(err){
-    showToast("PNG бэлдэхэд алдаа гарлаа: " + err.message, true);
+    showToast("Татахад алдаа гарлаа: " + err.message, true);
   } finally {
-    if(btn){ btn.textContent = oldText; btn.disabled = false; }
+    if(btn) btn.disabled = false;
   }
 }
 
@@ -1090,10 +1058,11 @@ async function deleteFile(id){
 /* ---------------- QR board ---------------- */
 const QR_LOGO_ASPECT = 0.6024; // combined school+ISO logo width/height
 
-// Draws a logo-branded QR into #qr-gen-canvas (same layout/colors as the
-// old standalone QR_Generator_184.html tool) so admins no longer have to
-// open that separate file.
-function drawGeneratedQr(url){
+// Draws a logo-branded QR, with its name baked in as a title bar above the
+// code, into #qr-gen-canvas — so the name travels with the image itself
+// (grid, downloads, printed copies) instead of living only in separate HTML
+// text next to it.
+function drawGeneratedQr(url, name){
   return new Promise((resolve)=>{
     const canvas = document.getElementById("qr-gen-canvas");
     const ctx = canvas.getContext("2d");
@@ -1102,34 +1071,58 @@ function drawGeneratedQr(url){
     qr.make();
     const moduleCount = qr.getModuleCount();
 
-    const CSS_SIZE = 240;
+    const QR_SIZE = 240, PAD = 20, FONT_SIZE = 20, LINE_HEIGHT = 26;
+
+    ctx.font = `800 ${FONT_SIZE}px 'Noto Sans', sans-serif`;
+    const words = (name || "").trim().split(/\s+/).filter(Boolean);
+    const lines = [];
+    let line = "";
+    words.forEach(w=>{
+      const test = line ? line + " " + w : w;
+      if(ctx.measureText(test).width > QR_SIZE && line){ lines.push(line); line = w; }
+      else { line = test; }
+    });
+    lines.push(line || "");
+
+    const titleHeight = PAD + lines.length*LINE_HEIGHT + 6;
+    const CSS_W = QR_SIZE + PAD*2;
+    const CSS_H = titleHeight + QR_SIZE + PAD;
+
     const DPR = Math.max(window.devicePixelRatio || 1, 3);
-    canvas.width = CSS_SIZE * DPR;
-    canvas.height = CSS_SIZE * DPR;
-    canvas.style.width = CSS_SIZE + "px";
-    canvas.style.height = CSS_SIZE + "px";
+    canvas.width = CSS_W * DPR;
+    canvas.height = CSS_H * DPR;
+    canvas.style.width = CSS_W + "px";
+    canvas.style.height = CSS_H + "px";
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
 
-    const cell = CSS_SIZE / moduleCount;
-    ctx.clearRect(0, 0, CSS_SIZE, CSS_SIZE);
+    ctx.clearRect(0, 0, CSS_W, CSS_H);
     ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, CSS_SIZE, CSS_SIZE);
+    ctx.fillRect(0, 0, CSS_W, CSS_H);
+
+    ctx.fillStyle = "#155A2C";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.font = `800 ${FONT_SIZE}px 'Noto Sans', sans-serif`;
+    lines.forEach((l,i)=> ctx.fillText(l, CSS_W/2, PAD + i*LINE_HEIGHT));
+
+    const qrTop = titleHeight;
+    const cell = QR_SIZE / moduleCount;
     ctx.fillStyle = "#068A50";
     for(let r=0; r<moduleCount; r++){
       for(let c=0; c<moduleCount; c++){
         if(qr.isDark(r,c)){
-          ctx.fillRect(Math.round(c*cell), Math.round(r*cell), Math.ceil(cell)+0.5, Math.ceil(cell)+0.5);
+          ctx.fillRect(PAD + Math.round(c*cell), qrTop + Math.round(r*cell), Math.ceil(cell)+0.5, Math.ceil(cell)+0.5);
         }
       }
     }
 
     const logoImg = new Image();
     logoImg.onload = ()=>{
-      const logoHeight = CSS_SIZE * 0.44;
+      const logoHeight = QR_SIZE * 0.44;
       const logoWidth = logoHeight * QR_LOGO_ASPECT;
-      ctx.drawImage(logoImg, (CSS_SIZE-logoWidth)/2, (CSS_SIZE-logoHeight)/2, logoWidth, logoHeight);
+      ctx.drawImage(logoImg, PAD + (QR_SIZE-logoWidth)/2, qrTop + (QR_SIZE-logoHeight)/2, logoWidth, logoHeight);
       resolve();
     };
     logoImg.onerror = ()=> resolve();
@@ -1139,11 +1132,13 @@ function drawGeneratedQr(url){
 
 async function generateQrPreview(){
   const status = document.getElementById("qr-add-status");
+  const name = document.getElementById("qr-item-name").value.trim();
   const url = document.getElementById("qr-item-url").value.trim();
+  if(!name){ status.textContent = "Нэр оруулна уу."; return; }
   if(!url){ status.textContent = "Холбоосоо оруулна уу."; return; }
   try{ new URL(url); } catch(e){ status.textContent = "Зөв холбоос (URL) оруулна уу."; return; }
   status.textContent = "";
-  await drawGeneratedQr(url);
+  await drawGeneratedQr(url, name);
   document.getElementById("qr-gen-placeholder").hidden = true;
   document.getElementById("qr-gen-canvas").hidden = false;
   document.getElementById("qr-add-go").disabled = false;
