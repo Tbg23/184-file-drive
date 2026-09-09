@@ -661,12 +661,18 @@ function renderCalMonths(isAdmin){
       const monthNames = groupSeq.map(({month})=>MN_MONTHS[month]).join(" · ");
       const section = document.createElement('div');
       section.className = 'cal-quarter-section';
-      section.innerHTML = `<div class="cal-quarter-heading">${CAL_QUARTER_LABELS[g]}<span class="cal-quarter-months">${monthNames}</span></div>`;
+      section.innerHTML = `<div class="cal-quarter-heading">
+        <span class="cal-quarter-heading-text">${CAL_QUARTER_LABELS[g]}<span class="cal-quarter-months">${monthNames}</span></span>
+        <button type="button" class="cal-quarter-png-btn" data-quarter="${g}">🖼️ PNG татах</button>
+      </div>`;
       const qGrid = document.createElement('div');
       qGrid.className = 'cal-months cal-months-quarter';
-      groupSeq.forEach(({month,year}, i)=> qGrid.appendChild(buildCalMonthCard(month, year, g*3+i, isAdmin, false)));
+      // zoomed=true: quarter view uses the same enlarged card styling as the single-month zoom
+      groupSeq.forEach(({month,year}, i)=> qGrid.appendChild(buildCalMonthCard(month, year, g*3+i, isAdmin, true)));
       section.appendChild(qGrid);
       grid.appendChild(section);
+      section.querySelector('.cal-quarter-png-btn').addEventListener('click', (e)=>
+        exportCalQuarterImage(qGrid, CAL_QUARTER_LABELS[g], e.currentTarget));
     }
     return;
   }
@@ -675,13 +681,86 @@ function renderCalMonths(isAdmin){
   seq.forEach(({month,year}, idx)=> grid.appendChild(buildCalMonthCard(month, year, idx, isAdmin, false)));
 }
 
+function renderCalZoomTabs(activeMonth, activeYear){
+  const wrap = document.getElementById("cal-zoom-tabs");
+  const seq = calMonthSequence(calState.startYear);
+  wrap.innerHTML = seq.map(({month,year}, idx)=>{
+    const active = month===activeMonth && year===activeYear;
+    return `<button type="button" class="cal-zoom-tab${active?' active':''}" data-idx="${idx}">${month+1} сар</button>`;
+  }).join("");
+  wrap.querySelectorAll("[data-idx]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const { month, year } = seq[Number(btn.dataset.idx)];
+      openCalMonthZoom(month, year, Number(btn.dataset.idx));
+    });
+  });
+}
+
 let calZoomTarget = null;
 function openCalMonthZoom(month, year, mascotIdx){
   calZoomTarget = { month, year };
+  renderCalZoomTabs(month, year);
   const body = document.getElementById("cal-zoom-body");
   body.innerHTML = '';
   body.appendChild(buildCalMonthCard(month, year, mascotIdx, !!session, true));
   openModal("modal-cal-month-zoom");
+}
+
+// Clones a calendar node off-screen at a fixed width (and forces each .cal-months
+// grid to its intended column count) before capturing, so the exported PNG looks
+// the same no matter how narrow the browser tab/phone/zoom level currently is —
+// html2canvas otherwise just screenshots whatever responsive layout is on screen.
+async function captureCalNode(sourceEl, { width, bg = "#ffffff" } = {}){
+  const clone = sourceEl.cloneNode(true);
+  const host = document.createElement('div');
+  host.style.cssText = 'position:fixed;left:-99999px;top:0;pointer-events:none;';
+  if(width){ clone.style.width = width + "px"; clone.style.maxWidth = width + "px"; }
+  const normalizeCols = (el)=>{
+    if(el.classList && el.classList.contains('cal-months')){
+      el.style.gridTemplateColumns = el.classList.contains('cal-months-quarter') ? 'repeat(3,1fr)' : 'repeat(4,1fr)';
+    }
+  };
+  normalizeCols(clone);
+  clone.querySelectorAll && clone.querySelectorAll('.cal-months').forEach(normalizeCols);
+  host.appendChild(clone);
+  document.body.appendChild(host);
+  await new Promise(r=> requestAnimationFrame(()=> requestAnimationFrame(r)));
+  try{
+    return await html2canvas(clone, { backgroundColor: bg, scale: 2, useCORS: true });
+  } finally {
+    document.body.removeChild(host);
+  }
+}
+
+function downloadCanvas(canvas, filename){
+  return new Promise((resolve)=>{
+    canvas.toBlob((blob)=>{
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      resolve();
+    }, "image/png");
+  });
+}
+
+async function exportCalQuarterImage(qGridEl, label, btnEl){
+  const oldText = btnEl.textContent;
+  btnEl.textContent = 'Бэлдэж байна…';
+  btnEl.disabled = true;
+  try{
+    const canvas = await captureCalNode(qGridEl, { width: 1200, bg: "#ffffff" });
+    await downloadCanvas(canvas, `huanli-${calState.startYear}-${label.replace(/[^\wа-яА-ЯёЁ0-9]+/g,"")}.png`);
+  }catch(err){
+    showToast("Зураг бэлдэхэд алдаа гарлаа: " + err.message, true);
+  } finally {
+    btnEl.textContent = oldText;
+    btnEl.disabled = false;
+  }
 }
 
 async function exportCalMonthImage(){
@@ -692,21 +771,11 @@ async function exportCalMonthImage(){
   btn.disabled = true;
   try{
     const target = document.querySelector("#cal-zoom-body .cal-month-card");
-    const canvas = await html2canvas(target, { backgroundColor: '#ffffff', scale: 2, useCORS: true });
-    canvas.toBlob((blob)=>{
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `huanli-${calZoomTarget.year}-${String(calZoomTarget.month+1).padStart(2,"0")}.png`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      btn.textContent = oldText;
-      btn.disabled = false;
-    });
+    const canvas = await captureCalNode(target, { width: 560, bg: "#ffffff" });
+    await downloadCanvas(canvas, `huanli-${calZoomTarget.year}-${String(calZoomTarget.month+1).padStart(2,"0")}.png`);
   }catch(err){
     showToast("Зураг бэлдэхэд алдаа гарлаа: " + err.message, true);
+  } finally {
     btn.textContent = oldText;
     btn.disabled = false;
   }
@@ -862,21 +931,11 @@ async function exportCalImage(){
   btn.disabled = true;
   try{
     const target = document.querySelector("#calendar-view .cal-wrap");
-    const canvas = await html2canvas(target, { backgroundColor: '#eaf6ec', scale: 2, useCORS: true });
-    canvas.toBlob((blob)=>{
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `huanli-${calState.startYear}-${calState.startYear+1}.png`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      btn.textContent = oldText;
-      btn.disabled = false;
-    });
+    const canvas = await captureCalNode(target, { width: 1400, bg: "#eaf6ec" });
+    await downloadCanvas(canvas, `huanli-${calState.startYear}-${calState.startYear+1}.png`);
   }catch(err){
     showToast("Зураг бэлдэхэд алдаа гарлаа: " + err.message, true);
+  } finally {
     btn.textContent = oldText;
     btn.disabled = false;
   }

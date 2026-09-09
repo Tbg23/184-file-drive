@@ -128,6 +128,28 @@
           </div>
         </div>
       </div>
+
+      <!-- Calendar: month zoom modal -->
+      <div class="overlay" id="modal-cal-month-zoom">
+        <div class="modal cal-zoom-modal">
+          <div class="cal-zoom-actions">
+            <button class="btn-ghost" id="cal-zoom-png-btn">🖼️ PNG татах</button>
+            <button class="btn-ghost" data-close="modal-cal-month-zoom">✕ Хаах</button>
+          </div>
+          <div class="cal-zoom-tabs" id="cal-zoom-tabs"></div>
+          <div id="cal-zoom-body" class="cal-zoom-body"></div>
+        </div>
+      </div>
+
+      <!-- Calendar: day entry modal -->
+      <div class="overlay" id="modal-cal-day">
+        <div class="modal" id="cal-day-modal"></div>
+      </div>
+
+      <!-- Calendar: category manager modal -->
+      <div class="overlay" id="modal-cal-category">
+        <div class="modal" id="cal-category-modal"></div>
+      </div>
     </div>
   </main>
 </div>
@@ -229,26 +251,6 @@
   </div>
 </div>
 
-<!-- Calendar: month zoom modal -->
-<div class="overlay" id="modal-cal-month-zoom">
-  <div class="modal cal-zoom-modal">
-    <div class="cal-zoom-actions">
-      <button class="btn-ghost" id="cal-zoom-png-btn">🖼️ PNG татах</button>
-      <button class="btn-ghost" data-close="modal-cal-month-zoom">✕ Хаах</button>
-    </div>
-    <div id="cal-zoom-body" class="cal-zoom-body"></div>
-  </div>
-</div>
-
-<!-- Calendar: day entry modal -->
-<div class="overlay" id="modal-cal-day">
-  <div class="modal" id="cal-day-modal"></div>
-</div>
-
-<!-- Calendar: category manager modal -->
-<div class="overlay" id="modal-cal-category">
-  <div class="modal" id="cal-category-modal"></div>
-</div>
 
 <!-- File viewer -->
 <div class="viewer-overlay" id="viewer">
