@@ -159,6 +159,7 @@ async function boot(){
     .on("postgres_changes", { event:"*", schema:"public", table:"calendar_state" }, loadCalendarState)
     .on("postgres_changes", { event:"*", schema:"public", table:"teachers" }, loadTeachers)
     .on("postgres_changes", { event:"*", schema:"public", table:"checkins" }, loadCheckins)
+    .on("postgres_changes", { event:"*", schema:"public", table:"site_settings" }, loadGateCode)
     .subscribe();
 
   window.addEventListener("hashchange", render);
@@ -169,17 +170,18 @@ async function boot(){
 // in and when. No shared passcode / persisted "stay unlocked" anymore — the
 // gate always shows on a fresh page load so each visit gets logged.
 async function tryUnlock(){
-  const input = document.getElementById("gate-input");
-  const code = input.value.trim();
+  const name = document.getElementById("gate-name-input").value.trim();
+  const code = document.getElementById("gate-input").value.trim();
   const errEl = document.getElementById("gate-err");
+  if(!name){ errEl.textContent = "Нэрээ оруулна уу."; return; }
   if(!code){ errEl.textContent = "Кодоо оруулна уу."; return; }
   const btn = document.getElementById("gate-btn");
   btn.disabled = true;
   errEl.textContent = "";
-  const { data, error } = await supabase.rpc("log_teacher_checkin", { code_input: code });
+  const { data, error } = await supabase.rpc("log_teacher_checkin", { name_input: name, code_input: code });
   btn.disabled = false;
   if(error){ errEl.textContent = "Алдаа гарлаа: " + error.message; return; }
-  if(!data){ errEl.textContent = "Код буруу байна. Дахин оролдоно уу."; return; }
+  if(!data){ errEl.textContent = "Нэр эсвэл код буруу байна. Дахин оролдоно уу."; return; }
   showApp();
 }
 function showApp(){
@@ -198,11 +200,13 @@ function updateAdminUI(){
   if(session){
     statusEl.textContent = "Админ: " + session.user.email;
     btn.textContent = "Гарах";
+    loadGateCode();
     loadTeachers();
     loadCheckins();
   } else {
     statusEl.textContent = "Зочин горим";
     btn.textContent = "Админ нэвтрэх";
+    gateCode = null;
     teachers = [];
     checkins = [];
   }
@@ -1075,7 +1079,15 @@ async function exportCalImage(){
   }
 }
 
-/* ---------------- registry (teacher codes + checkin log) ---------------- */
+/* ---------------- registry (shared gate code + teacher names + checkin log) ---------------- */
+let gateCode = null;
+async function loadGateCode(){
+  if(!session){ gateCode = null; return; }
+  const { data, error } = await supabase.from("site_settings").select("gate_code").eq("id","main").maybeSingle();
+  if(error){ showToast("Код ачаалахад алдаа: " + error.message, true); return; }
+  gateCode = data ? data.gate_code : null;
+  render();
+}
 async function loadTeachers(){
   if(!session){ teachers = []; return; }
   const { data, error } = await supabase.from("teachers").select("*").order("name", { ascending:true });
@@ -1092,8 +1104,21 @@ async function loadCheckins(){
 }
 
 function renderRegistry(){
+  document.getElementById("gate-code-input").value = gateCode || "";
   renderTeacherList();
   renderCheckinList();
+}
+
+async function saveGateCode(){
+  const input = document.getElementById("gate-code-input");
+  const status = document.getElementById("gate-code-status");
+  const code = input.value.trim();
+  if(!code){ status.textContent = "Код хоосон байж болохгүй."; return; }
+  const { error } = await supabase.from("site_settings")
+    .upsert({ id: "main", gate_code: code, updated_at: new Date().toISOString() });
+  if(error){ status.textContent = ""; showToast("Хадгалахад алдаа: " + error.message, true); return; }
+  status.textContent = "Хадгалагдсан";
+  setTimeout(()=>{ status.textContent = ""; }, 2500);
 }
 
 function renderTeacherList(){
@@ -1105,7 +1130,6 @@ function renderTeacherList(){
   list.innerHTML = teachers.map(t=>`
     <div class="teacher-row">
       <span class="teacher-name">${escapeHtml(t.name)}</span>
-      <span class="teacher-code mono">${escapeHtml(t.code)}</span>
       <button class="icon-btn danger" title="Устгах" data-teacher-delete="${t.id}">✕</button>
     </div>`).join("");
   list.querySelectorAll("[data-teacher-delete]").forEach(el=>
@@ -1127,14 +1151,11 @@ function renderCheckinList(){
 
 async function addTeacher(){
   const nameInput = document.getElementById("teacher-name-input");
-  const codeInput = document.getElementById("teacher-code-input");
   const name = nameInput.value.trim();
-  const code = codeInput.value.trim();
-  if(!name || !code){ showToast("Нэр болон код хоёуланг нь оруулна уу.", true); return; }
-  const { error } = await supabase.from("teachers").insert({ id: uid(), name, code });
+  if(!name){ showToast("Нэрээ оруулна уу.", true); return; }
+  const { error } = await supabase.from("teachers").insert({ id: uid(), name });
   if(error){ showToast("Нэмэхэд алдаа: " + error.message, true); return; }
   nameInput.value = "";
-  codeInput.value = "";
 }
 async function deleteTeacher(id){
   const t = teachers.find(x=>x.id===id);
@@ -1406,6 +1427,7 @@ function wireStaticEvents(){
   document.getElementById("gate-input").addEventListener("keydown", e=>{ if(e.key==="Enter") tryUnlock(); });
   document.getElementById("gate-admin-btn").addEventListener("click", ()=> openModal("modal-admin"));
   document.getElementById("teacher-add-go").addEventListener("click", addTeacher);
+  document.getElementById("gate-code-save").addEventListener("click", saveGateCode);
 
   document.getElementById("search-input").addEventListener("input", render);
 

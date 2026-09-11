@@ -117,10 +117,12 @@ on conflict (id) do nothing;
 -- Багш бүрийн өөрийн код (сайт руу нэвтрэх "gate") + нэвтрэлтийн түүх.
 -- teachers хүснэгтэд ЗӨВХӨН админ (authenticated) уншиж/бичиж болно — кодуудыг
 -- хэн ч жагсаалт татаж харж болохооргүй байх учиртай.
+-- Багш нэрээрээ ялгарна (нэр давхцаж болохгүй); нэвтрэх код бол нийтлэг нэг
+-- код (site_settings-д хадгална) — код давхцах эрсдэлгүй, зөвхөн нэрээр нь
+-- хэн орсныг ялгана.
 create table if not exists teachers (
   id text primary key,
-  name text not null,
-  code text not null unique,
+  name text not null unique,
   created_at timestamptz not null default now()
 );
 alter table teachers enable row level security;
@@ -137,11 +139,21 @@ alter table checkins enable row level security;
 create policy "authenticated read checkins" on checkins for select
   using (auth.role() = 'authenticated');
 
--- Клиент (anon эрхтэй) кодыг шалгаж бүртгүүлэхдээ энэ функцийг л дуудна —
--- teachers хүснэгтийг шууд уншихгүй тул кодуудыг ямар ч эрхгүй хүн жагсааж
--- харах боломжгүй хэвээр үлдэнэ. Зөв код бол багшийн нэрийг буцааж, checkins-д
--- нэг мөр нэмнэ; буруу бол NULL буцаана.
-create or replace function log_teacher_checkin(code_input text)
+create table if not exists site_settings (
+  id text primary key,
+  gate_code text not null default '',
+  updated_at timestamptz not null default now()
+);
+alter table site_settings enable row level security;
+create policy "authenticated manage site_settings" on site_settings for all
+  using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+-- Клиент (anon эрхтэй) нэр+кодыг шалгаж бүртгүүлэхдээ энэ функцийг л дуудна —
+-- teachers/site_settings хүснэгтийг шууд уншихгүй тул нийтлэг кодыг ямар ч
+-- эрхгүй хүн шууд харах боломжгүй хэвээр үлдэнэ. Нэр таарч, код зөв бол
+-- багшийн нэрийг буцааж, checkins-д нэг мөр нэмнэ; буруу бол NULL буцаана.
+drop function if exists log_teacher_checkin(text);
+create or replace function log_teacher_checkin(name_input text, code_input text)
 returns text
 language plpgsql
 security definer
@@ -149,8 +161,13 @@ set search_path = public
 as $$
 declare
   matched teachers%rowtype;
+  site_code text;
 begin
-  select * into matched from teachers where code = code_input;
+  select gate_code into site_code from site_settings where id = 'main';
+  if site_code is null or site_code = '' or code_input <> site_code then
+    return null;
+  end if;
+  select * into matched from teachers where name = name_input;
   if matched.id is null then
     return null;
   end if;
@@ -159,4 +176,4 @@ begin
 end;
 $$;
 
-grant execute on function log_teacher_checkin(text) to anon, authenticated;
+grant execute on function log_teacher_checkin(text, text) to anon, authenticated;

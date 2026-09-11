@@ -18,8 +18,9 @@
   <div class="gate-card">
     <div class="gate-mark">184</div>
     <h1>184 ISO Файлын сан</h1>
-    <p>Үргэлжлүүлэхийн тулд өөрийн багшийн кодоо оруулна уу.</p>
-    <input id="gate-input" type="text" placeholder="Таны код" autocomplete="off" />
+    <p>Үргэлжлүүлэхийн тулд өөрийн нэр болон нэвтрэх кодоо оруулна уу.</p>
+    <input id="gate-name-input" type="text" placeholder="Таны нэр" autocomplete="off" style="margin-bottom:10px;" />
+    <input id="gate-input" type="text" placeholder="Нэвтрэх код" autocomplete="off" />
     <button class="btn-primary" style="justify-content:center" id="gate-btn">Нэвтрэх</button>
     <div class="gate-err" id="gate-err"></div>
     <button class="btn-ghost" style="width:100%;justify-content:center;margin-top:14px;" id="gate-admin-btn">Админ эрхээр нэвтрэх</button>
@@ -157,13 +158,20 @@
       <div class="topbar">
         <div class="crumbs"><span>Бүртгэл</span></div>
       </div>
-      <p class="hint" style="margin:-8px 0 16px;">Багш бүрт өөрийн код өгч, тэдний нэвтрэлтийг энд харна. Кодоо мэдэх хүн бүр гарааны хуудсанд орж чадна.</p>
+      <p class="hint" style="margin:-8px 0 16px;">Нэвтрэх код нэг нийтлэг — бүгд ижилхэн код ашиглана. Багш өөрийн жинхэнэ нэрээ бичсэнээр систем хэн орсныг тэмдэглэдэг.</p>
+      <div class="registry-panel" style="margin-bottom:20px;max-width:420px;">
+        <h3>Нийтлэг нэвтрэх код</h3>
+        <div class="registry-add-row">
+          <input type="text" id="gate-code-input" placeholder="Жишээ: 184ISO" />
+          <button class="btn-primary" id="gate-code-save">Хадгалах</button>
+        </div>
+        <p class="hint" id="gate-code-status" style="margin:8px 0 0;"></p>
+      </div>
       <div class="registry-layout">
         <div class="registry-panel">
           <h3>Багш нар</h3>
           <div class="registry-add-row">
             <input type="text" id="teacher-name-input" placeholder="Багшийн нэр" />
-            <input type="text" id="teacher-code-input" placeholder="Код" />
             <button class="btn-primary" id="teacher-add-go">+ Нэмэх</button>
           </div>
           <div id="teacher-list"></div>
