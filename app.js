@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { SUPABASE_URL, SUPABASE_ANON_KEY, VIEW_PASSCODE } from "./config.js";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const BUCKET = "files";
@@ -10,6 +10,8 @@ let qrItems = [];
 let qrSchedule = null;
 let calState = null;
 let calViewMode = "months"; // "months" | "quarters"
+let teachers = [];
+let checkins = [];
 let session = null;
 
 const MN_MONTHS = ["1-Р САР","2-Р САР","3-Р САР","4-Р САР","5-Р САР","6-Р САР","7-Р САР","8-Р САР","9-Р САР","10-Р САР","11-Р САР","12-Р САР"];
@@ -45,6 +47,10 @@ function fmtSize(b){
 }
 function fmtDate(iso){
   try{ return new Date(iso).toLocaleDateString("mn-MN",{year:"numeric",month:"short",day:"numeric"}); }
+  catch(e){ return iso || ""; }
+}
+function fmtDateTime(iso){
+  try{ return new Date(iso).toLocaleString("mn-MN",{year:"numeric",month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}); }
   catch(e){ return iso || ""; }
 }
 function uid(){ return crypto.randomUUID(); }
@@ -141,8 +147,6 @@ async function boot(){
 
   wireStaticEvents();
 
-  if(localStorage.getItem("iso184_unlocked") === "1") showApp();
-
   await Promise.all([loadData(), loadQrItems(), loadQrSchedule(), loadCalendarState()]);
   updateAdminUI();
 
@@ -153,19 +157,30 @@ async function boot(){
     .on("postgres_changes", { event:"*", schema:"public", table:"qr_items" }, loadQrItems)
     .on("postgres_changes", { event:"*", schema:"public", table:"qr_schedule" }, loadQrSchedule)
     .on("postgres_changes", { event:"*", schema:"public", table:"calendar_state" }, loadCalendarState)
+    .on("postgres_changes", { event:"*", schema:"public", table:"teachers" }, loadTeachers)
+    .on("postgres_changes", { event:"*", schema:"public", table:"checkins" }, loadCheckins)
     .subscribe();
 
   window.addEventListener("hashchange", render);
 }
 
-function tryUnlock(){
-  const v = document.getElementById("gate-input").value.trim();
-  if(v && v === VIEW_PASSCODE){
-    localStorage.setItem("iso184_unlocked", "1");
-    showApp();
-  } else {
-    document.getElementById("gate-err").textContent = "Код буруу байна. Дахин оролдоно уу.";
-  }
+// Every teacher has their own code (set up by admin in "Бүртгэл"); a valid
+// code both unlocks the site and logs a checkin row, tracking who has come
+// in and when. No shared passcode / persisted "stay unlocked" anymore — the
+// gate always shows on a fresh page load so each visit gets logged.
+async function tryUnlock(){
+  const input = document.getElementById("gate-input");
+  const code = input.value.trim();
+  const errEl = document.getElementById("gate-err");
+  if(!code){ errEl.textContent = "Кодоо оруулна уу."; return; }
+  const btn = document.getElementById("gate-btn");
+  btn.disabled = true;
+  errEl.textContent = "";
+  const { data, error } = await supabase.rpc("log_teacher_checkin", { code_input: code });
+  btn.disabled = false;
+  if(error){ errEl.textContent = "Алдаа гарлаа: " + error.message; return; }
+  if(!data){ errEl.textContent = "Код буруу байна. Дахин оролдоно уу."; return; }
+  showApp();
 }
 function showApp(){
   document.getElementById("gate").style.display = "none";
@@ -179,12 +194,17 @@ function showApp(){
 function updateAdminUI(){
   const statusEl = document.getElementById("admin-status");
   const btn = document.getElementById("admin-btn");
+  document.getElementById("registry-nav-link").hidden = !session;
   if(session){
     statusEl.textContent = "Админ: " + session.user.email;
     btn.textContent = "Гарах";
+    loadTeachers();
+    loadCheckins();
   } else {
     statusEl.textContent = "Зочин горим";
     btn.textContent = "Админ нэвтрэх";
+    teachers = [];
+    checkins = [];
   }
   render();
 }
@@ -197,11 +217,15 @@ async function adminLogin(){
   if(error){ statusEl.textContent = "Алдаа: " + error.message; return; }
   statusEl.textContent = "";
   closeModal("modal-admin");
+  // Admin login can also happen straight from the gate screen (before a
+  // teacher code was entered) — bypass the code gate in that case too.
+  if(!document.getElementById("app").classList.contains("show")) showApp();
 }
 
 /* ---------------- routing helpers ---------------- */
 function isQrRoute(){ return location.hash === "#qr"; }
 function isCalendarRoute(){ return location.hash === "#calendar"; }
+function isRegistryRoute(){ return location.hash === "#registry"; }
 function currentFolderId(){
   const m = /f=([^&]+)/.exec(location.hash);
   return m ? decodeURIComponent(m[1]) : "root";
@@ -223,11 +247,21 @@ function render(){
 
   const qrRoute = isQrRoute();
   const calRoute = isCalendarRoute();
-  document.getElementById("folder-view").hidden = qrRoute || calRoute;
+  const registryRoute = isRegistryRoute();
+  document.getElementById("folder-view").hidden = qrRoute || calRoute || registryRoute;
   document.getElementById("qr-view").hidden = !qrRoute;
   document.getElementById("calendar-view").hidden = !calRoute;
+  document.getElementById("registry-view").hidden = !registryRoute;
 
   renderSidebar();
+
+  if(registryRoute){
+    document.querySelectorAll(".side-link").forEach(a=>a.classList.toggle("active", a.dataset.nav==="registry"));
+    document.getElementById("viewer").classList.remove("show");
+    stopQrCountdown();
+    renderRegistry();
+    return;
+  }
 
   if(calRoute){
     document.querySelectorAll(".side-link").forEach(a=>a.classList.toggle("active", a.dataset.nav==="calendar"));
@@ -1041,6 +1075,75 @@ async function exportCalImage(){
   }
 }
 
+/* ---------------- registry (teacher codes + checkin log) ---------------- */
+async function loadTeachers(){
+  if(!session){ teachers = []; return; }
+  const { data, error } = await supabase.from("teachers").select("*").order("name", { ascending:true });
+  if(error){ showToast("Багшийн жагсаалт ачаалахад алдаа: " + error.message, true); return; }
+  teachers = data || [];
+  render();
+}
+async function loadCheckins(){
+  if(!session){ checkins = []; return; }
+  const { data, error } = await supabase.from("checkins").select("*").order("checked_in_at", { ascending:false }).limit(200);
+  if(error){ showToast("Нэвтрэлтийн түүх ачаалахад алдаа: " + error.message, true); return; }
+  checkins = data || [];
+  render();
+}
+
+function renderRegistry(){
+  renderTeacherList();
+  renderCheckinList();
+}
+
+function renderTeacherList(){
+  const list = document.getElementById("teacher-list");
+  if(teachers.length===0){
+    list.innerHTML = `<p class="hint">Багш алга байна. Дээрээс нэмнэ үү.</p>`;
+    return;
+  }
+  list.innerHTML = teachers.map(t=>`
+    <div class="teacher-row">
+      <span class="teacher-name">${escapeHtml(t.name)}</span>
+      <span class="teacher-code mono">${escapeHtml(t.code)}</span>
+      <button class="icon-btn danger" title="Устгах" data-teacher-delete="${t.id}">✕</button>
+    </div>`).join("");
+  list.querySelectorAll("[data-teacher-delete]").forEach(el=>
+    el.addEventListener("click", ()=> deleteTeacher(el.dataset.teacherDelete)));
+}
+
+function renderCheckinList(){
+  const list = document.getElementById("checkin-list");
+  if(checkins.length===0){
+    list.innerHTML = `<p class="hint">Нэвтрэлт хараахан бүртгэгдээгүй байна.</p>`;
+    return;
+  }
+  list.innerHTML = checkins.map(c=>`
+    <div class="checkin-row">
+      <span class="checkin-name">${escapeHtml(c.teacher_name)}</span>
+      <span class="checkin-time mono">${fmtDateTime(c.checked_in_at)}</span>
+    </div>`).join("");
+}
+
+async function addTeacher(){
+  const nameInput = document.getElementById("teacher-name-input");
+  const codeInput = document.getElementById("teacher-code-input");
+  const name = nameInput.value.trim();
+  const code = codeInput.value.trim();
+  if(!name || !code){ showToast("Нэр болон код хоёуланг нь оруулна уу.", true); return; }
+  const { error } = await supabase.from("teachers").insert({ id: uid(), name, code });
+  if(error){ showToast("Нэмэхэд алдаа: " + error.message, true); return; }
+  nameInput.value = "";
+  codeInput.value = "";
+}
+async function deleteTeacher(id){
+  const t = teachers.find(x=>x.id===id);
+  if(!t) return;
+  if(!confirm(`"${t.name}"-г бүртгэлээс устгах уу?`)) return;
+  const { error } = await supabase.from("teachers").delete().eq("id", id);
+  if(error){ showToast("Устгахад алдаа: " + error.message, true); return; }
+}
+
 /* ---------------- modals ---------------- */
 function openModal(id){ document.getElementById(id).classList.add("show"); }
 function closeModal(id){ document.getElementById(id).classList.remove("show"); }
@@ -1301,6 +1404,8 @@ async function openViewer(fileId){
 function wireStaticEvents(){
   document.getElementById("gate-btn").addEventListener("click", tryUnlock);
   document.getElementById("gate-input").addEventListener("keydown", e=>{ if(e.key==="Enter") tryUnlock(); });
+  document.getElementById("gate-admin-btn").addEventListener("click", ()=> openModal("modal-admin"));
+  document.getElementById("teacher-add-go").addEventListener("click", addTeacher);
 
   document.getElementById("search-input").addEventListener("input", render);
 

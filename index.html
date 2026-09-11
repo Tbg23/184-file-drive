@@ -18,10 +18,11 @@
   <div class="gate-card">
     <div class="gate-mark">184</div>
     <h1>184 ISO Файлын сан</h1>
-    <p>Үргэлжлүүлэхийн тулд багийн нэвтрэх кодоо оруулна уу.</p>
-    <input id="gate-input" type="text" placeholder="Нэвтрэх код" autocomplete="off" />
+    <p>Үргэлжлүүлэхийн тулд өөрийн багшийн кодоо оруулна уу.</p>
+    <input id="gate-input" type="text" placeholder="Таны код" autocomplete="off" />
     <button class="btn-primary" style="justify-content:center" id="gate-btn">Нэвтрэх</button>
     <div class="gate-err" id="gate-err"></div>
+    <button class="btn-ghost" style="width:100%;justify-content:center;margin-top:14px;" id="gate-admin-btn">Админ эрхээр нэвтрэх</button>
   </div>
 </div>
 
@@ -32,6 +33,7 @@
     <a href="#f=root" class="side-link" data-nav="root">🏠 Нүүр</a>
     <a href="#qr" class="side-link" data-nav="qr">🔳 QR самбар</a>
     <a href="#calendar" class="side-link" data-nav="calendar">📅 Хуанли</a>
+    <a href="#registry" class="side-link" data-nav="registry" id="registry-nav-link" hidden>📋 Бүртгэл</a>
     <div class="side-sep"></div>
     <div class="side-label">Фолдерууд</div>
     <div id="side-folders"></div>
@@ -149,6 +151,27 @@
       <!-- Calendar: category manager modal -->
       <div class="overlay" id="modal-cal-category">
         <div class="modal" id="cal-category-modal"></div>
+      </div>
+    </div>
+    <div id="registry-view" hidden>
+      <div class="topbar">
+        <div class="crumbs"><span>Бүртгэл</span></div>
+      </div>
+      <p class="hint" style="margin:-8px 0 16px;">Багш бүрт өөрийн код өгч, тэдний нэвтрэлтийг энд харна. Кодоо мэдэх хүн бүр гарааны хуудсанд орж чадна.</p>
+      <div class="registry-layout">
+        <div class="registry-panel">
+          <h3>Багш нар</h3>
+          <div class="registry-add-row">
+            <input type="text" id="teacher-name-input" placeholder="Багшийн нэр" />
+            <input type="text" id="teacher-code-input" placeholder="Код" />
+            <button class="btn-primary" id="teacher-add-go">+ Нэмэх</button>
+          </div>
+          <div id="teacher-list"></div>
+        </div>
+        <div class="registry-panel">
+          <h3>Сүүлийн нэвтрэлтүүд</h3>
+          <div id="checkin-list"></div>
+        </div>
       </div>
     </div>
   </main>

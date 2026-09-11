@@ -113,3 +113,50 @@ create policy "authenticated write qr_schedule" on qr_schedule for all
 insert into qr_schedule (id, title, subtitle, target_at) values
   ('main', 'Дотоод аудитын шалгалт', '9-р сарын 15, 16', '2026-09-15T09:00:00+08:00')
 on conflict (id) do nothing;
+
+-- Багш бүрийн өөрийн код (сайт руу нэвтрэх "gate") + нэвтрэлтийн түүх.
+-- teachers хүснэгтэд ЗӨВХӨН админ (authenticated) уншиж/бичиж болно — кодуудыг
+-- хэн ч жагсаалт татаж харж болохооргүй байх учиртай.
+create table if not exists teachers (
+  id text primary key,
+  name text not null,
+  code text not null unique,
+  created_at timestamptz not null default now()
+);
+alter table teachers enable row level security;
+create policy "authenticated manage teachers" on teachers for all
+  using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+create table if not exists checkins (
+  id bigint generated always as identity primary key,
+  teacher_id text not null references teachers(id) on delete cascade,
+  teacher_name text not null,
+  checked_in_at timestamptz not null default now()
+);
+alter table checkins enable row level security;
+create policy "authenticated read checkins" on checkins for select
+  using (auth.role() = 'authenticated');
+
+-- Клиент (anon эрхтэй) кодыг шалгаж бүртгүүлэхдээ энэ функцийг л дуудна —
+-- teachers хүснэгтийг шууд уншихгүй тул кодуудыг ямар ч эрхгүй хүн жагсааж
+-- харах боломжгүй хэвээр үлдэнэ. Зөв код бол багшийн нэрийг буцааж, checkins-д
+-- нэг мөр нэмнэ; буруу бол NULL буцаана.
+create or replace function log_teacher_checkin(code_input text)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  matched teachers%rowtype;
+begin
+  select * into matched from teachers where code = code_input;
+  if matched.id is null then
+    return null;
+  end if;
+  insert into checkins (teacher_id, teacher_name) values (matched.id, matched.name);
+  return matched.name;
+end;
+$$;
+
+grant execute on function log_teacher_checkin(text) to anon, authenticated;
