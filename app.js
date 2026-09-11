@@ -1127,11 +1127,21 @@ function renderTeacherList(){
     list.innerHTML = `<p class="hint">Багш алга байна. Дээрээс нэмнэ үү.</p>`;
     return;
   }
-  list.innerHTML = teachers.map(t=>`
-    <div class="teacher-row">
+  // checkins is already sorted newest-first, so the first match per teacher is their latest checkin.
+  const doneCount = teachers.filter(t=> checkins.some(c=>c.teacher_id===t.id)).length;
+  const summary = `<p class="registry-stat"><strong>${doneCount}</strong> / ${teachers.length} багш танилцсан</p>`;
+  const rows = teachers.map(t=>{
+    const last = checkins.find(c=>c.teacher_id===t.id);
+    const status = last
+      ? `<span class="teacher-status done">✓ Танилцсан · ${fmtDateTime(last.checked_in_at)}</span>`
+      : `<span class="teacher-status pending">Танилцаагүй</span>`;
+    return `<div class="teacher-row">
       <span class="teacher-name">${escapeHtml(t.name)}</span>
+      ${status}
       <button class="icon-btn danger" title="Устгах" data-teacher-delete="${t.id}">✕</button>
-    </div>`).join("");
+    </div>`;
+  }).join("");
+  list.innerHTML = summary + rows;
   list.querySelectorAll("[data-teacher-delete]").forEach(el=>
     el.addEventListener("click", ()=> deleteTeacher(el.dataset.teacherDelete)));
 }
