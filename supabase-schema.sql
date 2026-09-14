@@ -127,14 +127,15 @@ create policy "public read dev_groups" on dev_groups for select using (true);
 create policy "authenticated manage dev_groups" on dev_groups for all
   using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 
--- Багш нэрээрээ ялгарна (нэр давхцаж болохгүй) бөгөөд бүлэгт хамаарна. Нэр/
--- бүлэг нь гарааны хуудасны dropdown-д хэрэгтэй тул нийтэд (anon) уншигдана;
--- зөвхөн админ засна.
+-- Багш нэр+бүлгийн хослолоороо ялгарна (өөр бүлэгт ижил нэр давхцаж болно,
+-- жишээ нь өөр өөр багш хоёул "Сайнзаяа" байж болно). Нэр/бүлэг нь гарааны
+-- хуудасны dropdown-д хэрэгтэй тул нийтэд (anon) уншигдана; зөвхөн админ засна.
 create table if not exists teachers (
   id text primary key,
-  name text not null unique,
+  name text not null,
   group_id text references dev_groups(id) on delete set null,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  unique (name, group_id)
 );
 alter table teachers enable row level security;
 create policy "public read teachers" on teachers for select using (true);

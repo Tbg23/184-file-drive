@@ -1310,7 +1310,7 @@ async function addTeachersBulk(){
   const rows = names.map(name=> ({ id: uid(), name, group_id: groupId }));
   // Already-registered names are just skipped (unique on name), not an error —
   // pasting a list you're not sure is 100% new shouldn't fail the whole batch.
-  const { error } = await supabase.from("teachers").upsert(rows, { onConflict: "name", ignoreDuplicates: true });
+  const { error } = await supabase.from("teachers").upsert(rows, { onConflict: "name,group_id", ignoreDuplicates: true });
   if(error){ status.textContent = ""; showToast("Олноор нэмэхэд алдаа: " + error.message, true); return; }
   status.textContent = `${names.length} нэр боловсруулагдлаа (аль хэдийн бүртгэлтэй нэр алгассан).`;
   textarea.value = "";
