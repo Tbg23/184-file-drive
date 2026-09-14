@@ -10,6 +10,7 @@ let qrItems = [];
 let qrSchedule = null;
 let calState = null;
 let calViewMode = "months"; // "months" | "quarters"
+let groups = [];
 let teachers = [];
 let checkins = [];
 let session = null;
@@ -147,6 +148,13 @@ async function boot(){
 
   wireStaticEvents();
 
+  // Groups + teacher names power the gate's picker dropdowns and are needed
+  // before any login happens, so load them unconditionally — RLS allows
+  // public read on both (only the shared code itself, checked inside
+  // log_teacher_checkin, stays hidden).
+  await Promise.all([loadGroups(), loadTeachers()]);
+  renderGatePickers();
+
   await Promise.all([loadData(), loadQrItems(), loadQrSchedule(), loadCalendarState()]);
   updateAdminUI();
 
@@ -157,6 +165,7 @@ async function boot(){
     .on("postgres_changes", { event:"*", schema:"public", table:"qr_items" }, loadQrItems)
     .on("postgres_changes", { event:"*", schema:"public", table:"qr_schedule" }, loadQrSchedule)
     .on("postgres_changes", { event:"*", schema:"public", table:"calendar_state" }, loadCalendarState)
+    .on("postgres_changes", { event:"*", schema:"public", table:"dev_groups" }, loadGroups)
     .on("postgres_changes", { event:"*", schema:"public", table:"teachers" }, loadTeachers)
     .on("postgres_changes", { event:"*", schema:"public", table:"checkins" }, loadCheckins)
     .on("postgres_changes", { event:"*", schema:"public", table:"site_settings" }, loadGateCode)
@@ -165,15 +174,15 @@ async function boot(){
   window.addEventListener("hashchange", render);
 }
 
-// Every teacher has their own code (set up by admin in "Бүртгэл"); a valid
-// code both unlocks the site and logs a checkin row, tracking who has come
-// in and when. No shared passcode / persisted "stay unlocked" anymore — the
-// gate always shows on a fresh page load so each visit gets logged.
+// One shared code (set by admin in "Бүртгэл") unlocks the site; the visitor
+// also picks their group + name so a valid login still logs a checkin row
+// attributing who came in and when. No persisted "stay unlocked" — the gate
+// always shows on a fresh page load so each visit gets logged.
 async function tryUnlock(){
-  const name = document.getElementById("gate-name-input").value.trim();
+  const name = document.getElementById("gate-name-select").value;
   const code = document.getElementById("gate-input").value.trim();
   const errEl = document.getElementById("gate-err");
-  if(!name){ errEl.textContent = "Нэрээ оруулна уу."; return; }
+  if(!name){ errEl.textContent = "Нэрээ сонгоно уу."; return; }
   if(!code){ errEl.textContent = "Кодоо оруулна уу."; return; }
   const btn = document.getElementById("gate-btn");
   btn.disabled = true;
@@ -201,13 +210,11 @@ function updateAdminUI(){
     statusEl.textContent = "Админ: " + session.user.email;
     btn.textContent = "Гарах";
     loadGateCode();
-    loadTeachers();
     loadCheckins();
   } else {
     statusEl.textContent = "Зочин горим";
     btn.textContent = "Админ нэвтрэх";
     gateCode = null;
-    teachers = [];
     checkins = [];
   }
   render();
@@ -1079,7 +1086,7 @@ async function exportCalImage(){
   }
 }
 
-/* ---------------- registry (shared gate code + teacher names + checkin log) ---------------- */
+/* ---------------- registry (shared gate code + groups + teacher names + checkin log) ---------------- */
 let gateCode = null;
 async function loadGateCode(){
   if(!session){ gateCode = null; return; }
@@ -1088,12 +1095,22 @@ async function loadGateCode(){
   gateCode = data ? data.gate_code : null;
   render();
 }
+// Groups + teacher names are public (RLS allows anon select) since the gate's
+// picker dropdowns need them before login — only the shared code itself is
+// hidden, validated server-side inside log_teacher_checkin.
+async function loadGroups(){
+  const { data, error } = await supabase.from("dev_groups").select("*").order("name", { ascending:true });
+  if(error){ if(session) showToast("Бүлэг ачаалахад алдаа: " + error.message, true); return; }
+  groups = data || [];
+  render();
+  renderGatePickers();
+}
 async function loadTeachers(){
-  if(!session){ teachers = []; return; }
   const { data, error } = await supabase.from("teachers").select("*").order("name", { ascending:true });
-  if(error){ showToast("Багшийн жагсаалт ачаалахад алдаа: " + error.message, true); return; }
+  if(error){ if(session) showToast("Багшийн жагсаалт ачаалахад алдаа: " + error.message, true); return; }
   teachers = data || [];
   render();
+  renderGatePickers();
 }
 async function loadCheckins(){
   if(!session){ checkins = []; return; }
@@ -1103,8 +1120,34 @@ async function loadCheckins(){
   render();
 }
 
+// Gate screen's group -> name cascading pickers (shown before login, so not
+// gated by the app's "show" state like the rest of render()).
+function renderGatePickers(){
+  const groupSel = document.getElementById("gate-group-select");
+  const keepGroup = groupSel.value;
+  groupSel.innerHTML = `<option value="">Мэргэжлийн хөгжлийн бүлгээ сонгоно уу</option>` +
+    groups.map(g=> `<option value="${g.id}">${escapeHtml(g.name)}</option>`).join("");
+  groupSel.value = groups.some(g=>g.id===keepGroup) ? keepGroup : "";
+  renderGateNameOptions();
+}
+function renderGateNameOptions(){
+  const groupId = document.getElementById("gate-group-select").value;
+  const nameSel = document.getElementById("gate-name-select");
+  if(!groupId){
+    nameSel.innerHTML = `<option value="">Эхлээд бүлгээ сонгоно уу</option>`;
+    nameSel.disabled = true;
+    return;
+  }
+  const filtered = teachers.filter(t=> t.group_id===groupId);
+  nameSel.innerHTML = `<option value="">Нэрээ сонгоно уу</option>` +
+    filtered.map(t=> `<option value="${escapeHtml(t.name)}">${escapeHtml(t.name)}</option>`).join("");
+  nameSel.disabled = false;
+}
+
 function renderRegistry(){
   document.getElementById("gate-code-input").value = gateCode || "";
+  populateGroupSelects();
+  renderGroupList();
   renderTeacherList();
   renderCheckinList();
 }
@@ -1121,22 +1164,82 @@ async function saveGateCode(){
   setTimeout(()=>{ status.textContent = ""; }, 2500);
 }
 
+function populateGroupSelects(){
+  const groupOpts = groups.map(g=> `<option value="${g.id}">${escapeHtml(g.name)}</option>`).join("");
+
+  const addSel = document.getElementById("teacher-group-select");
+  addSel.innerHTML = `<option value="">Бүлэггүй</option>` + groupOpts;
+
+  const bulkSel = document.getElementById("teacher-bulk-group-select");
+  bulkSel.innerHTML = `<option value="">Бүлэггүй</option>` + groupOpts;
+
+  const filterSel = document.getElementById("teacher-filter-select");
+  const keepFilter = filterSel.value;
+  filterSel.innerHTML = `<option value="">Бүх бүлэг</option>` + groupOpts + `<option value="__none__">Бүлэггүй</option>`;
+  filterSel.value = keepFilter;
+}
+
+function renderGroupList(){
+  const list = document.getElementById("group-list");
+  if(groups.length===0){
+    list.innerHTML = `<p class="hint">Бүлэг алга байна. Дээрээс нэмнэ үү.</p>`;
+    return;
+  }
+  list.innerHTML = groups.map(g=>{
+    const count = teachers.filter(t=>t.group_id===g.id).length;
+    return `<div class="group-row">
+      <span class="group-name">${escapeHtml(g.name)}</span>
+      <span class="group-count">${count} багш</span>
+      <button class="icon-btn danger" title="Устгах" data-group-delete="${g.id}">✕</button>
+    </div>`;
+  }).join("");
+  list.querySelectorAll("[data-group-delete]").forEach(el=>
+    el.addEventListener("click", ()=> deleteGroup(el.dataset.groupDelete)));
+}
+
+async function addGroup(){
+  const input = document.getElementById("group-name-input");
+  const name = input.value.trim();
+  if(!name){ showToast("Бүлгийн нэрээ оруулна уу.", true); return; }
+  const { error } = await supabase.from("dev_groups").insert({ id: uid(), name });
+  if(error){ showToast("Нэмэхэд алдаа: " + error.message, true); return; }
+  input.value = "";
+}
+async function deleteGroup(id){
+  const g = groups.find(x=>x.id===id);
+  if(!g) return;
+  const count = teachers.filter(t=>t.group_id===id).length;
+  const msg = count>0
+    ? `"${g.name}" бүлгийг устгах уу? Энэ бүлэгт байгаа ${count} багшийн бүлэг хоосорно (тэд устахгүй).`
+    : `"${g.name}" бүлгийг устгах уу?`;
+  if(!confirm(msg)) return;
+  const { error } = await supabase.from("dev_groups").delete().eq("id", id);
+  if(error){ showToast("Устгахад алдаа: " + error.message, true); return; }
+}
+
 function renderTeacherList(){
   const list = document.getElementById("teacher-list");
-  if(teachers.length===0){
-    list.innerHTML = `<p class="hint">Багш алга байна. Дээрээс нэмнэ үү.</p>`;
+  const filterVal = document.getElementById("teacher-filter-select").value;
+  let filtered = teachers;
+  if(filterVal === "__none__") filtered = teachers.filter(t=>!t.group_id);
+  else if(filterVal) filtered = teachers.filter(t=>t.group_id===filterVal);
+
+  if(filtered.length===0){
+    list.innerHTML = `<p class="hint">Багш алга байна.</p>`;
     return;
   }
   // checkins is already sorted newest-first, so the first match per teacher is their latest checkin.
-  const doneCount = teachers.filter(t=> checkins.some(c=>c.teacher_id===t.id)).length;
-  const summary = `<p class="registry-stat"><strong>${doneCount}</strong> / ${teachers.length} багш танилцсан</p>`;
-  const rows = teachers.map(t=>{
+  const doneCount = filtered.filter(t=> checkins.some(c=>c.teacher_id===t.id)).length;
+  const summary = `<p class="registry-stat"><strong>${doneCount}</strong> / ${filtered.length} багш танилцсан</p>`;
+  const rows = filtered.map(t=>{
+    const group = t.group_id ? groups.find(g=>g.id===t.group_id) : null;
     const last = checkins.find(c=>c.teacher_id===t.id);
     const status = last
       ? `<span class="teacher-status done">✓ Танилцсан · ${fmtDateTime(last.checked_in_at)}</span>`
       : `<span class="teacher-status pending">Танилцаагүй</span>`;
     return `<div class="teacher-row">
       <span class="teacher-name">${escapeHtml(t.name)}</span>
+      ${group ? `<span class="teacher-group">${escapeHtml(group.name)}</span>` : ``}
       ${status}
       <button class="icon-btn danger" title="Устгах" data-teacher-delete="${t.id}">✕</button>
     </div>`;
@@ -1161,12 +1264,38 @@ function renderCheckinList(){
 
 async function addTeacher(){
   const nameInput = document.getElementById("teacher-name-input");
+  const groupSelect = document.getElementById("teacher-group-select");
   const name = nameInput.value.trim();
   if(!name){ showToast("Нэрээ оруулна уу.", true); return; }
-  const { error } = await supabase.from("teachers").insert({ id: uid(), name });
+  const { error } = await supabase.from("teachers").insert({ id: uid(), name, group_id: groupSelect.value || null });
   if(error){ showToast("Нэмэхэд алдаа: " + error.message, true); return; }
   nameInput.value = "";
 }
+
+async function addTeachersBulk(){
+  const textarea = document.getElementById("teacher-bulk-input");
+  const groupSelect = document.getElementById("teacher-bulk-group-select");
+  const status = document.getElementById("teacher-bulk-status");
+  const seen = new Set();
+  const names = textarea.value.split("\n").map(s=>s.trim()).filter(Boolean).filter(n=>{
+    const key = n.toLowerCase();
+    if(seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  if(names.length===0){ status.textContent = "Нэрсээ оруулна уу."; return; }
+  status.textContent = `Нэмж байна… (${names.length})`;
+  const groupId = groupSelect.value || null;
+  const rows = names.map(name=> ({ id: uid(), name, group_id: groupId }));
+  // Already-registered names are just skipped (unique on name), not an error —
+  // pasting a list you're not sure is 100% new shouldn't fail the whole batch.
+  const { error } = await supabase.from("teachers").upsert(rows, { onConflict: "name", ignoreDuplicates: true });
+  if(error){ status.textContent = ""; showToast("Олноор нэмэхэд алдаа: " + error.message, true); return; }
+  status.textContent = `${names.length} нэр боловсруулагдлаа (аль хэдийн бүртгэлтэй нэр алгассан).`;
+  textarea.value = "";
+  setTimeout(()=>{ status.textContent = ""; }, 5000);
+}
+
 async function deleteTeacher(id){
   const t = teachers.find(x=>x.id===id);
   if(!t) return;
@@ -1435,8 +1564,12 @@ async function openViewer(fileId){
 function wireStaticEvents(){
   document.getElementById("gate-btn").addEventListener("click", tryUnlock);
   document.getElementById("gate-input").addEventListener("keydown", e=>{ if(e.key==="Enter") tryUnlock(); });
+  document.getElementById("gate-group-select").addEventListener("change", renderGateNameOptions);
   document.getElementById("gate-admin-btn").addEventListener("click", ()=> openModal("modal-admin"));
   document.getElementById("teacher-add-go").addEventListener("click", addTeacher);
+  document.getElementById("teacher-bulk-go").addEventListener("click", addTeachersBulk);
+  document.getElementById("teacher-filter-select").addEventListener("change", renderTeacherList);
+  document.getElementById("group-add-go").addEventListener("click", addGroup);
   document.getElementById("gate-code-save").addEventListener("click", saveGateCode);
 
   document.getElementById("search-input").addEventListener("input", render);

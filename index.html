@@ -18,8 +18,13 @@
   <div class="gate-card">
     <div class="gate-mark">184</div>
     <h1>184 ISO Файлын сан</h1>
-    <p>Үргэлжлүүлэхийн тулд өөрийн нэр болон нэвтрэх кодоо оруулна уу.</p>
-    <input id="gate-name-input" type="text" placeholder="Таны нэр" autocomplete="off" style="margin-bottom:10px;" />
+    <p>Үргэлжлүүлэхийн тулд бүлэг, нэр, нэвтрэх кодоо сонгож оруулна уу.</p>
+    <select id="gate-group-select" style="margin-bottom:10px;">
+      <option value="">Мэргэжлийн хөгжлийн бүлгээ сонгоно уу</option>
+    </select>
+    <select id="gate-name-select" style="margin-bottom:10px;" disabled>
+      <option value="">Эхлээд бүлгээ сонгоно уу</option>
+    </select>
     <input id="gate-input" type="text" placeholder="Нэвтрэх код" autocomplete="off" />
     <button class="btn-primary" style="justify-content:center" id="gate-btn">Нэвтрэх</button>
     <div class="gate-err" id="gate-err"></div>
@@ -158,22 +163,46 @@
       <div class="topbar">
         <div class="crumbs"><span>Бүртгэл</span></div>
       </div>
-      <p class="hint" style="margin:-8px 0 16px;">Нэвтрэх код нэг нийтлэг — бүгд ижилхэн код ашиглана. Багш өөрийн жинхэнэ нэрээ бичсэнээр систем хэн орсныг тэмдэглэдэг.</p>
-      <div class="registry-panel" style="margin-bottom:20px;max-width:420px;">
-        <h3>Нийтлэг нэвтрэх код</h3>
-        <div class="registry-add-row">
-          <input type="text" id="gate-code-input" placeholder="Жишээ: 184ISO" />
-          <button class="btn-primary" id="gate-code-save">Хадгалах</button>
+      <p class="hint" style="margin:-8px 0 16px;">Нэвтрэх код нэг нийтлэг — бүгд ижилхэн код ашиглана. Багш өөрийн бүлэг, нэрээ сонгосноор систем хэн орсныг тэмдэглэдэг.</p>
+      <div class="registry-layout-top">
+        <div class="registry-panel">
+          <h3>Нийтлэг нэвтрэх код</h3>
+          <div class="registry-add-row">
+            <input type="text" id="gate-code-input" placeholder="Жишээ: 184ISO" />
+            <button class="btn-primary" id="gate-code-save">Хадгалах</button>
+          </div>
+          <p class="hint" id="gate-code-status" style="margin:8px 0 0;"></p>
         </div>
-        <p class="hint" id="gate-code-status" style="margin:8px 0 0;"></p>
+        <div class="registry-panel">
+          <h3>Мэргэжлийн хөгжлийн бүлгүүд</h3>
+          <div class="registry-add-row">
+            <input type="text" id="group-name-input" placeholder="Жишээ: 1-р бүлэг" />
+            <button class="btn-primary" id="group-add-go">+ Нэмэх</button>
+          </div>
+          <div id="group-list"></div>
+        </div>
+      </div>
+      <div class="registry-panel" style="margin-bottom:20px;">
+        <h3>Багш нарыг олноор нэмэх</h3>
+        <p class="hint">Нэр бүрийг тусдаа мөрөнд бичиж/paste хийгээд, аль бүлэгт орохыг нь сонгож нэг дор нэмнэ.</p>
+        <textarea id="teacher-bulk-input" rows="6" placeholder="Нэр 1&#10;Нэр 2&#10;Нэр 3&#10;..."></textarea>
+        <div class="registry-add-row" style="margin-top:10px;">
+          <select id="teacher-bulk-group-select"></select>
+          <button class="btn-primary" id="teacher-bulk-go">Олноор нэмэх</button>
+        </div>
+        <p class="hint" id="teacher-bulk-status" style="margin:8px 0 0;"></p>
       </div>
       <div class="registry-layout">
         <div class="registry-panel">
           <h3>Багш нар</h3>
           <div class="registry-add-row">
             <input type="text" id="teacher-name-input" placeholder="Багшийн нэр" />
+            <select id="teacher-group-select"></select>
             <button class="btn-primary" id="teacher-add-go">+ Нэмэх</button>
           </div>
+          <select id="teacher-filter-select" style="margin:10px 0;width:100%;">
+            <option value="">Бүх бүлэг</option>
+          </select>
           <div id="teacher-list"></div>
         </div>
         <div class="registry-panel">

@@ -115,17 +115,30 @@ insert into qr_schedule (id, title, subtitle, target_at) values
 on conflict (id) do nothing;
 
 -- Багш бүрийн өөрийн код (сайт руу нэвтрэх "gate") + нэвтрэлтийн түүх.
--- teachers хүснэгтэд ЗӨВХӨН админ (authenticated) уншиж/бичиж болно — кодуудыг
--- хэн ч жагсаалт татаж харж болохооргүй байх учиртай.
--- Багш нэрээрээ ялгарна (нэр давхцаж болохгүй); нэвтрэх код бол нийтлэг нэг
--- код (site_settings-д хадгална) — код давхцах эрсдэлгүй, зөвхөн нэрээр нь
--- хэн орсныг ялгана.
-create table if not exists teachers (
+-- Мэргэжлийн хөгжлийн бүлгүүд — гарааны хуудсан дээрх бүлэг сонгох dropdown-д
+-- хэрэглэгдэнэ тул нэр нь нийтэд (anon-д ч) уншигдана; зөвхөн админ засна.
+create table if not exists dev_groups (
   id text primary key,
   name text not null unique,
   created_at timestamptz not null default now()
 );
+alter table dev_groups enable row level security;
+create policy "public read dev_groups" on dev_groups for select using (true);
+create policy "authenticated manage dev_groups" on dev_groups for all
+  using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+-- Багш нэрээрээ ялгарна (нэр давхцаж болохгүй) бөгөөд бүлэгт хамаарна;
+-- нэвтрэх код бол нийтлэг нэг код (site_settings-д хадгална) — код давхцах
+-- эрсдэлгүй, зөвхөн нэрээр нь хэн орсныг ялгана. Нэр/бүлэг нь гарааны
+-- хуудасны dropdown-д хэрэгтэй тул нийтэд (anon) уншигдана; зөвхөн админ засна.
+create table if not exists teachers (
+  id text primary key,
+  name text not null unique,
+  group_id text references dev_groups(id) on delete set null,
+  created_at timestamptz not null default now()
+);
 alter table teachers enable row level security;
+create policy "public read teachers" on teachers for select using (true);
 create policy "authenticated manage teachers" on teachers for all
   using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 
