@@ -18,13 +18,11 @@
   <div class="gate-card">
     <div class="gate-mark">184</div>
     <h1>184 ISO Файлын сан</h1>
-    <p>Үргэлжлүүлэхийн тулд бүлэг, нэр, нэвтрэх кодоо сонгож оруулна уу.</p>
+    <p>Үргэлжлүүлэхийн тулд бүлгээ сонгож, нэр, нэвтрэх кодоо оруулна уу.</p>
     <select id="gate-group-select" style="margin-bottom:10px;">
       <option value="">Мэргэжлийн хөгжлийн бүлгээ сонгоно уу</option>
     </select>
-    <select id="gate-name-select" style="margin-bottom:10px;" disabled>
-      <option value="">Эхлээд бүлгээ сонгоно уу</option>
-    </select>
+    <input id="gate-name-input" type="text" placeholder="Таны нэр" autocomplete="off" style="margin-bottom:10px;" />
     <input id="gate-input" type="text" placeholder="Нэвтрэх код" autocomplete="off" />
     <button class="btn-primary" style="justify-content:center" id="gate-btn">Нэвтрэх</button>
     <div class="gate-err" id="gate-err"></div>
@@ -163,21 +161,28 @@
       <div class="topbar">
         <div class="crumbs"><span>Бүртгэл</span></div>
       </div>
-      <p class="hint" style="margin:-8px 0 16px;">Бүлэг тус бүр өөрийн код ашиглана — буруу бүлэг сонгосон бол зөв код ч ажиллахгүй. Багш өөрийн бүлэг, нэрээ сонгосноор систем хэн орсныг тэмдэглэдэг.</p>
+      <p class="hint" style="margin:-8px 0 16px;">Нэвтрэх код нэг нийтлэг — бүгд ижилхэн код ашиглана. Багш өөрийн бүлэг, нэрээ зөв тохируулж оруулснаар систем хэн орсныг тэмдэглэдэг (бүлэг буруу бол нэр зөв байсан ч нэвтрэхгүй).</p>
       <div class="registry-layout-top">
         <div class="registry-panel">
-          <h3>Мэргэжлийн хөгжлийн бүлгүүд ба код</h3>
+          <h3>Нийтлэг нэвтрэх код</h3>
           <div class="registry-add-row">
-            <input type="text" id="group-name-input" placeholder="Бүлгийн нэр" />
-            <input type="text" id="group-code-input" placeholder="Код" style="max-width:110px;" />
+            <input type="text" id="gate-code-input" placeholder="Жишээ: 184ISO" />
+            <button class="btn-primary" id="gate-code-save">Хадгалах</button>
+          </div>
+          <p class="hint" id="gate-code-status" style="margin:8px 0 0;"></p>
+        </div>
+        <div class="registry-panel">
+          <h3>Мэргэжлийн хөгжлийн бүлгүүд</h3>
+          <div class="registry-add-row">
+            <input type="text" id="group-name-input" placeholder="Жишээ: 1-р бүлэг" />
             <button class="btn-primary" id="group-add-go">+ Нэмэх</button>
           </div>
           <div id="group-list"></div>
         </div>
-        <div class="registry-panel">
-          <h3>Танилцсаны статистик</h3>
-          <div id="registry-stats"></div>
-        </div>
+      </div>
+      <div class="registry-panel" style="margin-bottom:20px;">
+        <h3>Танилцсаны статистик</h3>
+        <div id="registry-stats"></div>
       </div>
       <div class="registry-panel" style="margin-bottom:20px;">
         <h3>Багш нарыг олноор нэмэх</h3>

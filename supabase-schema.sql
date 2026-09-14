@@ -117,12 +117,9 @@ on conflict (id) do nothing;
 -- Багш бүрийн өөрийн код (сайт руу нэвтрэх "gate") + нэвтрэлтийн түүх.
 -- Мэргэжлийн хөгжлийн бүлгүүд — гарааны хуудсан дээрх бүлэг сонгох dropdown-д
 -- хэрэглэгдэнэ тул нэр нь нийтэд (anon-д ч) уншигдана; зөвхөн админ засна.
--- Бүлэг тус бүр өөрийн код ашиглана (нийтлэг ганц код биш) — буруу бүлэг
--- сонгосон бол өөр бүлгийн зөв код ч ажиллахгүй.
 create table if not exists dev_groups (
   id text primary key,
   name text not null unique,
-  code text,
   created_at timestamptz not null default now()
 );
 alter table dev_groups enable row level security;
@@ -154,13 +151,22 @@ alter table checkins enable row level security;
 create policy "authenticated read checkins" on checkins for select
   using (auth.role() = 'authenticated');
 
+create table if not exists site_settings (
+  id text primary key,
+  gate_code text not null default '',
+  updated_at timestamptz not null default now()
+);
+alter table site_settings enable row level security;
+create policy "authenticated manage site_settings" on site_settings for all
+  using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
 -- Клиент (anon эрхтэй) нэр+бүлэг+кодыг шалгаж бүртгүүлэхдээ энэ функцийг л
--- дуудна — dev_groups.code баганыг шууд уншихгүй тул кодыг ямар ч эрхгүй хүн
--- шууд харах боломжгүй хэвээр үлдэнэ. Сонгосон бүлгийн код таарч, нэр яг тэр
--- бүлэгт хамаарч байвал багшийн нэрийг буцааж, checkins-д нэг мөр нэмнэ;
--- буруу бол NULL буцаана.
+-- дуудна — site_settings.gate_code баганыг шууд уншихгүй тул нийтлэг кодыг
+-- ямар ч эрхгүй хүн шууд харах боломжгүй хэвээр үлдэнэ. Нийтлэг код таарч,
+-- нэр яг сонгосон бүлэгт хамаарч байвал багшийн нэрийг буцааж, checkins-д
+-- нэг мөр нэмнэ; буруу бол NULL буцаана (жишээ нь нэр зөв ч буруу бүлэг
+-- сонгосон бол таарахгүй).
 drop function if exists log_teacher_checkin(text);
-drop function if exists log_teacher_checkin(text, text);
 create or replace function log_teacher_checkin(name_input text, group_input text, code_input text)
 returns text
 language plpgsql
@@ -169,10 +175,10 @@ set search_path = public
 as $$
 declare
   matched teachers%rowtype;
-  grp dev_groups%rowtype;
+  site_code text;
 begin
-  select * into grp from dev_groups where id = group_input;
-  if grp.id is null or grp.code is null or grp.code = '' or code_input <> grp.code then
+  select gate_code into site_code from site_settings where id = 'main';
+  if site_code is null or site_code = '' or code_input <> site_code then
     return null;
   end if;
   select * into matched from teachers where name = name_input and group_id = group_input;

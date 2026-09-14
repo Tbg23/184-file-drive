@@ -148,10 +148,12 @@ async function boot(){
 
   wireStaticEvents();
 
-  // Groups + teacher names power the gate's picker dropdowns and are needed
-  // before any login happens, so load them unconditionally — RLS allows
-  // public read on both (only the shared code itself, checked inside
-  // log_teacher_checkin, stays hidden).
+  // Groups power the gate's group picker and are needed before any login
+  // happens, so load them unconditionally — RLS allows public read (only
+  // the shared code itself, checked inside log_teacher_checkin, stays
+  // hidden). Teacher names also load unconditionally (Бүртгэл needs the
+  // full list either way), even though the gate now takes the name as
+  // free text rather than a dropdown.
   await Promise.all([loadGroups(), loadTeachers()]);
   renderGatePickers();
 
@@ -168,6 +170,7 @@ async function boot(){
     .on("postgres_changes", { event:"*", schema:"public", table:"dev_groups" }, loadGroups)
     .on("postgres_changes", { event:"*", schema:"public", table:"teachers" }, loadTeachers)
     .on("postgres_changes", { event:"*", schema:"public", table:"checkins" }, loadCheckins)
+    .on("postgres_changes", { event:"*", schema:"public", table:"site_settings" }, loadGateCode)
     .subscribe();
 
   window.addEventListener("hashchange", render);
@@ -179,11 +182,11 @@ async function boot(){
 // always shows on a fresh page load so each visit gets logged.
 async function tryUnlock(){
   const groupId = document.getElementById("gate-group-select").value;
-  const name = document.getElementById("gate-name-select").value;
+  const name = document.getElementById("gate-name-input").value.trim();
   const code = document.getElementById("gate-input").value.trim();
   const errEl = document.getElementById("gate-err");
   if(!groupId){ errEl.textContent = "Бүлгээ сонгоно уу."; return; }
-  if(!name){ errEl.textContent = "Нэрээ сонгоно уу."; return; }
+  if(!name){ errEl.textContent = "Нэрээ оруулна уу."; return; }
   if(!code){ errEl.textContent = "Кодоо оруулна уу."; return; }
   const btn = document.getElementById("gate-btn");
   btn.disabled = true;
@@ -210,10 +213,12 @@ function updateAdminUI(){
   if(session){
     statusEl.textContent = "Админ: " + session.user.email;
     btn.textContent = "Гарах";
+    loadGateCode();
     loadCheckins();
   } else {
     statusEl.textContent = "Зочин горим";
     btn.textContent = "Админ нэвтрэх";
+    gateCode = null;
     checkins = [];
   }
   render();
@@ -1085,9 +1090,17 @@ async function exportCalImage(){
   }
 }
 
-/* ---------------- registry (per-group gate codes + groups + teacher names + checkin log) ---------------- */
+/* ---------------- registry (shared gate code + groups + teacher names + checkin log) ---------------- */
+let gateCode = null;
+async function loadGateCode(){
+  if(!session){ gateCode = null; return; }
+  const { data, error } = await supabase.from("site_settings").select("gate_code").eq("id","main").maybeSingle();
+  if(error){ showToast("Код ачаалахад алдаа: " + error.message, true); return; }
+  gateCode = data ? data.gate_code : null;
+  render();
+}
 // Groups + teacher names are public (RLS allows anon select) since the gate's
-// picker dropdowns need them before login — only each group's code stays
+// group picker needs them before login — only the shared code itself stays
 // hidden, validated server-side inside log_teacher_checkin.
 async function loadGroups(){
   const { data, error } = await supabase.from("dev_groups").select("*").order("name", { ascending:true });
@@ -1111,36 +1124,36 @@ async function loadCheckins(){
   render();
 }
 
-// Gate screen's group -> name cascading pickers (shown before login, so not
-// gated by the app's "show" state like the rest of render()).
+// Gate screen's group picker (shown before login, so not gated by the app's
+// "show" state like the rest of render()). Name is free text, validated
+// (together with the picked group) server-side in log_teacher_checkin.
 function renderGatePickers(){
   const groupSel = document.getElementById("gate-group-select");
   const keepGroup = groupSel.value;
   groupSel.innerHTML = `<option value="">Мэргэжлийн хөгжлийн бүлгээ сонгоно уу</option>` +
     groups.map(g=> `<option value="${g.id}">${escapeHtml(g.name)}</option>`).join("");
   groupSel.value = groups.some(g=>g.id===keepGroup) ? keepGroup : "";
-  renderGateNameOptions();
-}
-function renderGateNameOptions(){
-  const groupId = document.getElementById("gate-group-select").value;
-  const nameSel = document.getElementById("gate-name-select");
-  if(!groupId){
-    nameSel.innerHTML = `<option value="">Эхлээд бүлгээ сонгоно уу</option>`;
-    nameSel.disabled = true;
-    return;
-  }
-  const filtered = teachers.filter(t=> t.group_id===groupId);
-  nameSel.innerHTML = `<option value="">Нэрээ сонгоно уу</option>` +
-    filtered.map(t=> `<option value="${escapeHtml(t.name)}">${escapeHtml(t.name)}</option>`).join("");
-  nameSel.disabled = false;
 }
 
 function renderRegistry(){
+  document.getElementById("gate-code-input").value = gateCode || "";
   populateGroupSelects();
   renderGroupList();
   renderStatsPanel();
   renderTeacherList();
   renderCheckinList();
+}
+
+async function saveGateCode(){
+  const input = document.getElementById("gate-code-input");
+  const status = document.getElementById("gate-code-status");
+  const code = input.value.trim();
+  if(!code){ status.textContent = "Код хоосон байж болохгүй."; return; }
+  const { error } = await supabase.from("site_settings")
+    .upsert({ id: "main", gate_code: code, updated_at: new Date().toISOString() });
+  if(error){ status.textContent = ""; showToast("Хадгалахад алдаа: " + error.message, true); return; }
+  status.textContent = "Хадгалагдсан";
+  setTimeout(()=>{ status.textContent = ""; }, 2500);
 }
 
 function renderStatsPanel(){
@@ -1188,34 +1201,21 @@ function renderGroupList(){
     const count = teachers.filter(t=>t.group_id===g.id).length;
     return `<div class="group-row">
       <span class="group-name">${escapeHtml(g.name)}</span>
-      <input type="text" class="group-code-input mono" value="${escapeHtml(g.code || "")}" placeholder="Код" data-group-code="${g.id}" />
       <span class="group-count">${count} багш</span>
       <button class="icon-btn danger" title="Устгах" data-group-delete="${g.id}">✕</button>
     </div>`;
   }).join("");
   list.querySelectorAll("[data-group-delete]").forEach(el=>
     el.addEventListener("click", ()=> deleteGroup(el.dataset.groupDelete)));
-  list.querySelectorAll("[data-group-code]").forEach(el=>
-    el.addEventListener("change", ()=> updateGroupCode(el.dataset.groupCode, el.value.trim())));
 }
 
 async function addGroup(){
   const nameInput = document.getElementById("group-name-input");
-  const codeInput = document.getElementById("group-code-input");
   const name = nameInput.value.trim();
-  const code = codeInput.value.trim();
   if(!name){ showToast("Бүлгийн нэрээ оруулна уу.", true); return; }
-  if(!code){ showToast("Бүлгийн кодыг оруулна уу.", true); return; }
-  const { error } = await supabase.from("dev_groups").insert({ id: uid(), name, code });
+  const { error } = await supabase.from("dev_groups").insert({ id: uid(), name });
   if(error){ showToast("Нэмэхэд алдаа: " + error.message, true); return; }
   nameInput.value = "";
-  codeInput.value = "";
-}
-async function updateGroupCode(id, code){
-  if(!code){ showToast("Код хоосон байж болохгүй.", true); renderGroupList(); return; }
-  const { error } = await supabase.from("dev_groups").update({ code }).eq("id", id);
-  if(error){ showToast("Код хадгалахад алдаа: " + error.message, true); return; }
-  showToast("Код шинэчлэгдлээ.");
 }
 async function deleteGroup(id){
   const g = groups.find(x=>x.id===id);
@@ -1576,12 +1576,12 @@ async function openViewer(fileId){
 function wireStaticEvents(){
   document.getElementById("gate-btn").addEventListener("click", tryUnlock);
   document.getElementById("gate-input").addEventListener("keydown", e=>{ if(e.key==="Enter") tryUnlock(); });
-  document.getElementById("gate-group-select").addEventListener("change", renderGateNameOptions);
   document.getElementById("gate-admin-btn").addEventListener("click", ()=> openModal("modal-admin"));
   document.getElementById("teacher-add-go").addEventListener("click", addTeacher);
   document.getElementById("teacher-bulk-go").addEventListener("click", addTeachersBulk);
   document.getElementById("teacher-filter-select").addEventListener("change", renderTeacherList);
   document.getElementById("group-add-go").addEventListener("click", addGroup);
+  document.getElementById("gate-code-save").addEventListener("click", saveGateCode);
 
   document.getElementById("search-input").addEventListener("input", render);
 
