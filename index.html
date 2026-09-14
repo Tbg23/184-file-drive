@@ -163,23 +163,20 @@
       <div class="topbar">
         <div class="crumbs"><span>Бүртгэл</span></div>
       </div>
-      <p class="hint" style="margin:-8px 0 16px;">Нэвтрэх код нэг нийтлэг — бүгд ижилхэн код ашиглана. Багш өөрийн бүлэг, нэрээ сонгосноор систем хэн орсныг тэмдэглэдэг.</p>
+      <p class="hint" style="margin:-8px 0 16px;">Бүлэг тус бүр өөрийн код ашиглана — буруу бүлэг сонгосон бол зөв код ч ажиллахгүй. Багш өөрийн бүлэг, нэрээ сонгосноор систем хэн орсныг тэмдэглэдэг.</p>
       <div class="registry-layout-top">
         <div class="registry-panel">
-          <h3>Нийтлэг нэвтрэх код</h3>
+          <h3>Мэргэжлийн хөгжлийн бүлгүүд ба код</h3>
           <div class="registry-add-row">
-            <input type="text" id="gate-code-input" placeholder="Жишээ: 184ISO" />
-            <button class="btn-primary" id="gate-code-save">Хадгалах</button>
-          </div>
-          <p class="hint" id="gate-code-status" style="margin:8px 0 0;"></p>
-        </div>
-        <div class="registry-panel">
-          <h3>Мэргэжлийн хөгжлийн бүлгүүд</h3>
-          <div class="registry-add-row">
-            <input type="text" id="group-name-input" placeholder="Жишээ: 1-р бүлэг" />
+            <input type="text" id="group-name-input" placeholder="Бүлгийн нэр" />
+            <input type="text" id="group-code-input" placeholder="Код" style="max-width:110px;" />
             <button class="btn-primary" id="group-add-go">+ Нэмэх</button>
           </div>
           <div id="group-list"></div>
+        </div>
+        <div class="registry-panel">
+          <h3>Танилцсаны статистик</h3>
+          <div id="registry-stats"></div>
         </div>
       </div>
       <div class="registry-panel" style="margin-bottom:20px;">

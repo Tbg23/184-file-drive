@@ -168,7 +168,6 @@ async function boot(){
     .on("postgres_changes", { event:"*", schema:"public", table:"dev_groups" }, loadGroups)
     .on("postgres_changes", { event:"*", schema:"public", table:"teachers" }, loadTeachers)
     .on("postgres_changes", { event:"*", schema:"public", table:"checkins" }, loadCheckins)
-    .on("postgres_changes", { event:"*", schema:"public", table:"site_settings" }, loadGateCode)
     .subscribe();
 
   window.addEventListener("hashchange", render);
@@ -179,18 +178,20 @@ async function boot(){
 // attributing who came in and when. No persisted "stay unlocked" — the gate
 // always shows on a fresh page load so each visit gets logged.
 async function tryUnlock(){
+  const groupId = document.getElementById("gate-group-select").value;
   const name = document.getElementById("gate-name-select").value;
   const code = document.getElementById("gate-input").value.trim();
   const errEl = document.getElementById("gate-err");
+  if(!groupId){ errEl.textContent = "Бүлгээ сонгоно уу."; return; }
   if(!name){ errEl.textContent = "Нэрээ сонгоно уу."; return; }
   if(!code){ errEl.textContent = "Кодоо оруулна уу."; return; }
   const btn = document.getElementById("gate-btn");
   btn.disabled = true;
   errEl.textContent = "";
-  const { data, error } = await supabase.rpc("log_teacher_checkin", { name_input: name, code_input: code });
+  const { data, error } = await supabase.rpc("log_teacher_checkin", { name_input: name, group_input: groupId, code_input: code });
   btn.disabled = false;
   if(error){ errEl.textContent = "Алдаа гарлаа: " + error.message; return; }
-  if(!data){ errEl.textContent = "Нэр эсвэл код буруу байна. Дахин оролдоно уу."; return; }
+  if(!data){ errEl.textContent = "Бүлэг, нэр эсвэл код буруу байна. Дахин оролдоно уу."; return; }
   showApp();
 }
 function showApp(){
@@ -209,12 +210,10 @@ function updateAdminUI(){
   if(session){
     statusEl.textContent = "Админ: " + session.user.email;
     btn.textContent = "Гарах";
-    loadGateCode();
     loadCheckins();
   } else {
     statusEl.textContent = "Зочин горим";
     btn.textContent = "Админ нэвтрэх";
-    gateCode = null;
     checkins = [];
   }
   render();
@@ -1086,17 +1085,9 @@ async function exportCalImage(){
   }
 }
 
-/* ---------------- registry (shared gate code + groups + teacher names + checkin log) ---------------- */
-let gateCode = null;
-async function loadGateCode(){
-  if(!session){ gateCode = null; return; }
-  const { data, error } = await supabase.from("site_settings").select("gate_code").eq("id","main").maybeSingle();
-  if(error){ showToast("Код ачаалахад алдаа: " + error.message, true); return; }
-  gateCode = data ? data.gate_code : null;
-  render();
-}
+/* ---------------- registry (per-group gate codes + groups + teacher names + checkin log) ---------------- */
 // Groups + teacher names are public (RLS allows anon select) since the gate's
-// picker dropdowns need them before login — only the shared code itself is
+// picker dropdowns need them before login — only each group's code stays
 // hidden, validated server-side inside log_teacher_checkin.
 async function loadGroups(){
   const { data, error } = await supabase.from("dev_groups").select("*").order("name", { ascending:true });
@@ -1145,23 +1136,31 @@ function renderGateNameOptions(){
 }
 
 function renderRegistry(){
-  document.getElementById("gate-code-input").value = gateCode || "";
   populateGroupSelects();
   renderGroupList();
+  renderStatsPanel();
   renderTeacherList();
   renderCheckinList();
 }
 
-async function saveGateCode(){
-  const input = document.getElementById("gate-code-input");
-  const status = document.getElementById("gate-code-status");
-  const code = input.value.trim();
-  if(!code){ status.textContent = "Код хоосон байж болохгүй."; return; }
-  const { error } = await supabase.from("site_settings")
-    .upsert({ id: "main", gate_code: code, updated_at: new Date().toISOString() });
-  if(error){ status.textContent = ""; showToast("Хадгалахад алдаа: " + error.message, true); return; }
-  status.textContent = "Хадгалагдсан";
-  setTimeout(()=>{ status.textContent = ""; }, 2500);
+function renderStatsPanel(){
+  const el = document.getElementById("registry-stats");
+  const hasCheckin = t=> checkins.some(c=>c.teacher_id===t.id);
+  const totalDone = teachers.filter(hasCheckin).length;
+  const groupRows = groups.map(g=>{
+    const groupTeachers = teachers.filter(t=>t.group_id===g.id);
+    const done = groupTeachers.filter(hasCheckin).length;
+    return `<div class="stat-row"><span class="stat-name">${escapeHtml(g.name)}</span><span class="stat-value">${done} / ${groupTeachers.length}</span></div>`;
+  }).join("");
+  const ungrouped = teachers.filter(t=>!t.group_id);
+  const ungroupedRow = ungrouped.length>0
+    ? `<div class="stat-row"><span class="stat-name">Бүлэггүй</span><span class="stat-value">${ungrouped.filter(hasCheckin).length} / ${ungrouped.length}</span></div>`
+    : ``;
+  el.innerHTML = `
+    <div class="stat-row stat-total"><span class="stat-name">Нийт бүх багш</span><span class="stat-value">${totalDone} / ${teachers.length}</span></div>
+    ${groupRows}
+    ${ungroupedRow}
+  `;
 }
 
 function populateGroupSelects(){
@@ -1189,21 +1188,34 @@ function renderGroupList(){
     const count = teachers.filter(t=>t.group_id===g.id).length;
     return `<div class="group-row">
       <span class="group-name">${escapeHtml(g.name)}</span>
+      <input type="text" class="group-code-input mono" value="${escapeHtml(g.code || "")}" placeholder="Код" data-group-code="${g.id}" />
       <span class="group-count">${count} багш</span>
       <button class="icon-btn danger" title="Устгах" data-group-delete="${g.id}">✕</button>
     </div>`;
   }).join("");
   list.querySelectorAll("[data-group-delete]").forEach(el=>
     el.addEventListener("click", ()=> deleteGroup(el.dataset.groupDelete)));
+  list.querySelectorAll("[data-group-code]").forEach(el=>
+    el.addEventListener("change", ()=> updateGroupCode(el.dataset.groupCode, el.value.trim())));
 }
 
 async function addGroup(){
-  const input = document.getElementById("group-name-input");
-  const name = input.value.trim();
+  const nameInput = document.getElementById("group-name-input");
+  const codeInput = document.getElementById("group-code-input");
+  const name = nameInput.value.trim();
+  const code = codeInput.value.trim();
   if(!name){ showToast("Бүлгийн нэрээ оруулна уу.", true); return; }
-  const { error } = await supabase.from("dev_groups").insert({ id: uid(), name });
+  if(!code){ showToast("Бүлгийн кодыг оруулна уу.", true); return; }
+  const { error } = await supabase.from("dev_groups").insert({ id: uid(), name, code });
   if(error){ showToast("Нэмэхэд алдаа: " + error.message, true); return; }
-  input.value = "";
+  nameInput.value = "";
+  codeInput.value = "";
+}
+async function updateGroupCode(id, code){
+  if(!code){ showToast("Код хоосон байж болохгүй.", true); renderGroupList(); return; }
+  const { error } = await supabase.from("dev_groups").update({ code }).eq("id", id);
+  if(error){ showToast("Код хадгалахад алдаа: " + error.message, true); return; }
+  showToast("Код шинэчлэгдлээ.");
 }
 async function deleteGroup(id){
   const g = groups.find(x=>x.id===id);
@@ -1570,7 +1582,6 @@ function wireStaticEvents(){
   document.getElementById("teacher-bulk-go").addEventListener("click", addTeachersBulk);
   document.getElementById("teacher-filter-select").addEventListener("change", renderTeacherList);
   document.getElementById("group-add-go").addEventListener("click", addGroup);
-  document.getElementById("gate-code-save").addEventListener("click", saveGateCode);
 
   document.getElementById("search-input").addEventListener("input", render);
 
