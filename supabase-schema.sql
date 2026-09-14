@@ -5,6 +5,7 @@ create table if not exists folders (
   id text primary key,
   name text not null,
   parent_id text references folders(id) on delete cascade,
+  position integer not null default 0,
   created_at timestamptz not null default now()
 );
 

@@ -72,7 +72,7 @@ function showToast(msg, isError){
 /* ---------------- data ---------------- */
 async function loadData(){
   const [{ data: f1, error: e1 }, { data: f2, error: e2 }] = await Promise.all([
-    supabase.from("folders").select("*").order("created_at", { ascending:true }),
+    supabase.from("folders").select("*").order("position", { ascending:true }),
     supabase.from("files").select("*").order("added_at", { ascending:false }),
   ]);
   if(e1) { showToast("Фолдер ачаалахад алдаа: " + e1.message, true); return; }
@@ -344,7 +344,7 @@ function render(){
 
   let rows = "";
   subFolders.forEach(f=>{
-    rows += `<tr>
+    rows += `<tr data-folder-id="${f.id}" draggable="${isAdmin}">
       <td colspan="3">
         <div class="row-name" data-open-folder="${f.id}">
           <div class="badge" style="background:var(--folder-soft);color:var(--folder);font-size:16px;">📁</div>
@@ -396,6 +396,46 @@ function render(){
     el.addEventListener("click", (e)=>{ e.stopPropagation(); openMoveModal("file", el.dataset.move); }));
   listing.querySelectorAll("[data-move-folder]").forEach(el=>
     el.addEventListener("click", (e)=>{ e.stopPropagation(); openMoveModal("folder", el.dataset.moveFolder); }));
+  if(isAdmin) wireFolderDrag(listing);
+}
+
+let folderDragId = null;
+function wireFolderDrag(listing){
+  listing.querySelectorAll("tr[data-folder-id]").forEach(row=>{
+    row.addEventListener("dragstart", ()=>{ folderDragId = row.dataset.folderId; row.classList.add("row-dragging"); });
+    row.addEventListener("dragend", ()=>{ row.classList.remove("row-dragging"); });
+    row.addEventListener("dragover", (e)=>{ e.preventDefault(); });
+    row.addEventListener("drop", (e)=>{
+      e.preventDefault();
+      const targetId = row.dataset.folderId;
+      if(!folderDragId || folderDragId===targetId) return;
+      reorderFolders(folderDragId, targetId);
+      folderDragId = null;
+    });
+  });
+}
+
+// Reorders siblings (same parent_id) only — folderOptionList/move handles
+// changing a folder's parent; this just fixes display order within one level.
+async function reorderFolders(sourceId, targetId){
+  const source = folderById(sourceId);
+  const target = folderById(targetId);
+  if(!source || !target || source.parent_id !== target.parent_id) return;
+  const siblings = childFolders(source.parent_id);
+  const fromIdx = siblings.findIndex(f=>f.id===sourceId);
+  const toIdx = siblings.findIndex(f=>f.id===targetId);
+  if(fromIdx===-1 || toIdx===-1) return;
+  const reordered = [...siblings];
+  const [moved] = reordered.splice(fromIdx,1);
+  reordered.splice(toIdx,0,moved);
+  reordered.forEach((f,i)=>{ f.position = i; });
+  folders = [...folders].sort((a,b)=> (a.position??0) - (b.position??0));
+  render();
+  const results = await Promise.all(
+    reordered.map((f,i)=> supabase.from("folders").update({ position:i }).eq("id", f.id))
+  );
+  const failed = results.find(r=>r.error);
+  if(failed){ showToast("Дараалал хадгалахад алдаа: " + failed.error.message, true); }
 }
 
 /* ---------------- move file/folder to another folder ---------------- */
@@ -1353,7 +1393,9 @@ async function createFolder(){
   const input = document.getElementById("new-folder-name");
   const name = input.value.trim();
   if(!name) return;
-  const { error } = await supabase.from("folders").insert({ id: uid(), name, parent_id: currentFolderId() });
+  const parentId = currentFolderId();
+  const nextPosition = childFolders(parentId).reduce((max,f)=> Math.max(max, f.position ?? 0), -1) + 1;
+  const { error } = await supabase.from("folders").insert({ id: uid(), name, parent_id: parentId, position: nextPosition });
   if(error){ showToast("Фолдер үүсгэхэд алдаа: " + error.message, true); return; }
   input.value = "";
   closeModal("modal-folder");
