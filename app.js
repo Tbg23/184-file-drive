@@ -148,6 +148,11 @@ async function boot(){
 
   wireStaticEvents();
 
+  // Skip the gate on a page refresh if we unlocked within the last hour —
+  // avoids making someone re-enter group/name/code just from reloading.
+  const unlockedUntil = Number(localStorage.getItem("iso184_unlocked_until") || 0);
+  if(unlockedUntil > Date.now()) showApp();
+
   // Groups power the gate's group picker and are needed before any login
   // happens, so load them unconditionally — RLS allows public read (only
   // the shared code itself, checked inside log_teacher_checkin, stays
@@ -176,10 +181,11 @@ async function boot(){
   window.addEventListener("hashchange", render);
 }
 
+const UNLOCK_DURATION_MS = 60 * 60 * 1000; // stay logged in for 1 hour across refreshes
+
 // One shared code (set by admin in "Бүртгэл") unlocks the site; the visitor
 // also picks their group + name so a valid login still logs a checkin row
-// attributing who came in and when. No persisted "stay unlocked" — the gate
-// always shows on a fresh page load so each visit gets logged.
+// attributing who came in and when.
 async function tryUnlock(){
   const groupId = document.getElementById("gate-group-select").value;
   const name = document.getElementById("gate-name-input").value.trim();
@@ -195,6 +201,7 @@ async function tryUnlock(){
   btn.disabled = false;
   if(error){ errEl.textContent = "Алдаа гарлаа: " + error.message; return; }
   if(!data){ errEl.textContent = "Бүлэг, нэр эсвэл код буруу байна. Дахин оролдоно уу."; return; }
+  localStorage.setItem("iso184_unlocked_until", String(Date.now() + UNLOCK_DURATION_MS));
   showApp();
 }
 function showApp(){
