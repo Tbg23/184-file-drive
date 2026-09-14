@@ -352,7 +352,11 @@ function render(){
         </div>
       </td>
       <td></td>
-      <td></td>
+      <td>
+        ${isAdmin ? `<div class="row-actions">
+          <button class="icon-btn" title="Зөөх" data-move-folder="${f.id}">📁</button>
+        </div>` : ``}
+      </td>
     </tr>`;
   });
   subFiles.forEach(f=>{
@@ -389,15 +393,26 @@ function render(){
   listing.querySelectorAll("[data-delete]").forEach(el=>
     el.addEventListener("click", (e)=>{ e.stopPropagation(); deleteFile(el.dataset.delete); }));
   listing.querySelectorAll("[data-move]").forEach(el=>
-    el.addEventListener("click", (e)=>{ e.stopPropagation(); openMoveModal(el.dataset.move); }));
+    el.addEventListener("click", (e)=>{ e.stopPropagation(); openMoveModal("file", el.dataset.move); }));
+  listing.querySelectorAll("[data-move-folder]").forEach(el=>
+    el.addEventListener("click", (e)=>{ e.stopPropagation(); openMoveModal("folder", el.dataset.moveFolder); }));
 }
 
-/* ---------------- move file to another folder ---------------- */
-let moveTarget = null;
-function folderOptionList(){
-  const opts = [{ id: "root", label: "🏠 Нүүр" }];
+/* ---------------- move file/folder to another folder ---------------- */
+let moveTarget = null; // { type: "file" | "folder", id }
+// excludeSubtreeRootId: when moving a FOLDER, its own subtree can't be a
+// valid destination (would orphan/cycle it), so it and all its descendants
+// are left out of the list entirely.
+function folderOptionList(excludeSubtreeRootId){
+  const excluded = new Set();
+  if(excludeSubtreeRootId){
+    const collect = (id)=>{ excluded.add(id); childFolders(id).forEach(f=>collect(f.id)); };
+    collect(excludeSubtreeRootId);
+  }
+  const opts = excluded.has("root") ? [] : [{ id: "root", label: "🏠 Нүүр" }];
   const walk = (parentId, depth)=>{
     childFolders(parentId).forEach(f=>{
+      if(excluded.has(f.id)) return;
       opts.push({ id: f.id, label: "　".repeat(depth) + "📁 " + f.name });
       walk(f.id, depth+1);
     });
@@ -405,20 +420,24 @@ function folderOptionList(){
   walk("root", 1);
   return opts;
 }
-function openMoveModal(fileId){
-  const f = fileById(fileId);
-  if(!f) return;
-  moveTarget = fileId;
-  document.getElementById("move-file-name").textContent = f.name;
-  document.getElementById("move-folder-select").innerHTML = folderOptionList().map(o=>
-    `<option value="${o.id}"${o.id===f.folder_id ? " selected" : ""}>${escapeHtml(o.label)}</option>`
+function openMoveModal(type, id){
+  const item = type === "folder" ? folderById(id) : fileById(id);
+  if(!item) return;
+  moveTarget = { type, id };
+  document.getElementById("move-file-name").textContent = item.name;
+  const currentParent = type === "folder" ? item.parent_id : item.folder_id;
+  const options = folderOptionList(type === "folder" ? id : null);
+  document.getElementById("move-folder-select").innerHTML = options.map(o=>
+    `<option value="${o.id}"${o.id===currentParent ? " selected" : ""}>${escapeHtml(o.label)}</option>`
   ).join("");
   openModal("modal-move");
 }
 async function doMoveFile(){
   if(!moveTarget) return closeModal("modal-move");
   const newFolderId = document.getElementById("move-folder-select").value;
-  const { error } = await supabase.from("files").update({ folder_id: newFolderId }).eq("id", moveTarget);
+  const table = moveTarget.type === "folder" ? "folders" : "files";
+  const field = moveTarget.type === "folder" ? "parent_id" : "folder_id";
+  const { error } = await supabase.from(table).update({ [field]: newFolderId }).eq("id", moveTarget.id);
   if(error){ showToast("Зөөхөд алдаа: " + error.message, true); return; }
   closeModal("modal-move");
 }
