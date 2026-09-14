@@ -148,10 +148,12 @@ async function boot(){
 
   wireStaticEvents();
 
-  // Skip the gate on a page refresh if we unlocked within the last hour —
-  // avoids making someone re-enter group/name/code just from reloading.
+  // Skip the gate on a page refresh if we unlocked within the last hour, or
+  // if this is an already-authenticated admin (their Supabase session alone
+  // proves who they are — no reason to also make them re-clear the teacher
+  // gate on every reload).
   const unlockedUntil = Number(localStorage.getItem("iso184_unlocked_until") || 0);
-  if(unlockedUntil > Date.now()) showApp();
+  if(session || unlockedUntil > Date.now()) showApp();
 
   // Groups power the gate's group picker and are needed before any login
   // happens, so load them unconditionally — RLS allows public read (only
