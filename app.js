@@ -1567,7 +1567,6 @@ async function deleteFile(id){
   const f = fileById(id);
   if(!f) return;
   if(!confirm(`"${f.name}" файлыг устгах уу?`)) return;
-  if(!confirm("Дахин баталгаажуулна уу — энэ үйлдлийг буцаах боломжгүй.")) return;
   const { error: rmErr } = await supabase.storage.from(BUCKET).remove([f.storage_path]);
   if(rmErr){ showToast("Устгахад алдаа: " + rmErr.message, true); return; }
   const { error: dbErr } = await supabase.from("files").delete().eq("id", f.id);
@@ -1594,7 +1593,6 @@ async function deleteFolder(id){
     msg += ` Дотор нь ${subFolderCount} дэд фолдер, ${filesToDelete.length} файл байгаа бөгөөд ТЭД БҮГД хамт устна.`;
   }
   if(!confirm(msg)) return;
-  if(!confirm("Дахин баталгаажуулна уу — энэ үйлдлийг буцаах боломжгүй.")) return;
   if(filesToDelete.length>0){
     const { error: rmErr } = await supabase.storage.from(BUCKET).remove(filesToDelete.map(x=>x.storage_path));
     if(rmErr){ showToast("Файл устгахад алдаа: " + rmErr.message, true); return; }
