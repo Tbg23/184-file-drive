@@ -14,6 +14,12 @@ let groups = [];
 let teachers = [];
 let checkins = [];
 let session = null;
+// Granular admin permissions (email-keyed, see admin_permissions table). No
+// row for the current admin's email = unrestricted (full access, backward
+// compatible with the original single-admin design).
+let perms = { viewStats:false, manageQrOrder:false, manageFiles:false, manageRegistry:false, unrestricted:false };
+let allPermRows = [];
+let currentPermEmail = null;
 
 const MN_MONTHS = ["1-Р САР","2-Р САР","3-Р САР","4-Р САР","5-Р САР","6-Р САР","7-Р САР","8-Р САР","9-Р САР","10-Р САР","11-Р САР","12-Р САР"];
 const MN_DAYS = ["ДА","МЯ","ЛХ","ПҮ","БА","БЯ","НЯ"];
@@ -178,6 +184,7 @@ async function boot(){
     .on("postgres_changes", { event:"*", schema:"public", table:"teachers" }, loadTeachers)
     .on("postgres_changes", { event:"*", schema:"public", table:"checkins" }, loadCheckins)
     .on("postgres_changes", { event:"*", schema:"public", table:"site_settings" }, loadGateCode)
+    .on("postgres_changes", { event:"*", schema:"public", table:"admin_permissions" }, loadPermissions)
     .subscribe();
 
   window.addEventListener("hashchange", render);
@@ -224,12 +231,33 @@ function updateAdminUI(){
     btn.textContent = "Гарах";
     loadGateCode();
     loadCheckins();
+    loadPermissions();
   } else {
     statusEl.textContent = "Зочин горим";
     btn.textContent = "Админ нэвтрэх";
     gateCode = null;
     checkins = [];
+    perms = { viewStats:false, manageQrOrder:false, manageFiles:false, manageRegistry:false, unrestricted:false };
   }
+  render();
+}
+
+async function loadPermissions(){
+  if(!session){ return; }
+  const { data, error } = await supabase.from("admin_permissions").select("*").eq("email", session.user.email).maybeSingle();
+  if(error){ showToast("Эрх ачаалахад алдаа: " + error.message, true); return; }
+  if(!data){
+    perms = { viewStats:true, manageQrOrder:true, manageFiles:true, manageRegistry:true, unrestricted:true };
+  } else {
+    perms = {
+      viewStats: !!data.can_view_stats,
+      manageQrOrder: !!data.can_manage_qr_order,
+      manageFiles: !!data.can_manage_files,
+      manageRegistry: !!data.can_manage_registry,
+      unrestricted: false,
+    };
+  }
+  if(perms.unrestricted) loadAllPermRows();
   render();
 }
 async function adminLogin(){
@@ -344,7 +372,7 @@ function render(){
 
   let rows = "";
   subFolders.forEach(f=>{
-    rows += `<tr data-folder-id="${f.id}" draggable="${isAdmin}">
+    rows += `<tr data-folder-id="${f.id}" draggable="${isAdmin && perms.manageFiles}">
       <td colspan="3">
         <div class="row-name" data-open-folder="${f.id}">
           <div class="badge" style="background:var(--folder-soft);color:var(--folder);font-size:16px;">📁</div>
@@ -353,7 +381,7 @@ function render(){
       </td>
       <td></td>
       <td>
-        ${isAdmin ? `<div class="row-actions">
+        ${isAdmin && perms.manageFiles ? `<div class="row-actions">
           <button class="icon-btn" title="Зөөх" data-move-folder="${f.id}">📁</button>
         </div>` : ``}
       </td>
@@ -372,7 +400,7 @@ function render(){
       <td class="dim mono">${fmtSize(f.size)}</td>
       <td>
         ${isAdmin ? `<div class="row-actions">
-          <button class="icon-btn" title="Зөөх" data-move="${f.id}">📁</button>
+          ${perms.manageFiles ? `<button class="icon-btn" title="Зөөх" data-move="${f.id}">📁</button>` : ``}
           <button class="icon-btn" title="Нэр солих" data-rename="${f.id}">✎</button>
           <button class="icon-btn danger" title="Устгах" data-delete="${f.id}">✕</button>
         </div>` : ``}
@@ -396,7 +424,7 @@ function render(){
     el.addEventListener("click", (e)=>{ e.stopPropagation(); openMoveModal("file", el.dataset.move); }));
   listing.querySelectorAll("[data-move-folder]").forEach(el=>
     el.addEventListener("click", (e)=>{ e.stopPropagation(); openMoveModal("folder", el.dataset.moveFolder); }));
-  if(isAdmin) wireFolderDrag(listing);
+  if(isAdmin && perms.manageFiles) wireFolderDrag(listing);
 }
 
 let folderDragId = null;
@@ -558,7 +586,7 @@ function renderQrGrid(){
   }
   grid.innerHTML = qrItems.map(item=>{
     const imgUrl = publicUrlFor(item.storage_path);
-    return `<div class="qr-card" data-qr-id="${item.id}" draggable="${isAdmin}">
+    return `<div class="qr-card" data-qr-id="${item.id}" draggable="${isAdmin && perms.manageQrOrder}">
       <div class="qr-actions">
         <button class="icon-btn" title="Татах" data-qr-download="${item.id}">⬇</button>
         ${isAdmin ? `
@@ -576,7 +604,7 @@ function renderQrGrid(){
     el.addEventListener("click", ()=> deleteQrItem(el.dataset.qrDelete)));
   grid.querySelectorAll("[data-qr-download]").forEach(el=>
     el.addEventListener("click", ()=> downloadQrItemImage(qrItemById(el.dataset.qrDownload), el)));
-  if(isAdmin) wireQrDrag(grid);
+  if(isAdmin && perms.manageQrOrder) wireQrDrag(grid);
 }
 
 // The on-site QR image has no text on it (name shows as separate HTML below
@@ -1204,12 +1232,20 @@ function renderGatePickers(){
 }
 
 function renderRegistry(){
+  document.getElementById("gate-code-panel").hidden = !perms.manageRegistry;
   document.getElementById("gate-code-input").value = gateCode || "";
+  document.getElementById("group-add-row").hidden = !perms.manageRegistry;
+  document.getElementById("teacher-add-row").hidden = !perms.manageRegistry;
+  document.getElementById("teacher-bulk-panel").hidden = !perms.manageRegistry;
+  document.getElementById("registry-stats-panel").hidden = !perms.viewStats;
+  document.getElementById("checkin-list-panel").hidden = !perms.viewStats;
+  document.getElementById("perm-admin-panel").hidden = !perms.unrestricted;
   populateGroupSelects();
   renderGroupList();
-  renderStatsPanel();
+  if(perms.viewStats) renderStatsPanel();
   renderTeacherList();
-  renderCheckinList();
+  if(perms.viewStats) renderCheckinList();
+  if(perms.unrestricted) renderPermList();
 }
 
 async function saveGateCode(){
@@ -1270,7 +1306,7 @@ function renderGroupList(){
     return `<div class="group-row">
       <span class="group-name">${escapeHtml(g.name)}</span>
       <span class="group-count">${count} багш</span>
-      <button class="icon-btn danger" title="Устгах" data-group-delete="${g.id}">✕</button>
+      ${perms.manageRegistry ? `<button class="icon-btn danger" title="Устгах" data-group-delete="${g.id}">✕</button>` : ``}
     </div>`;
   }).join("");
   list.querySelectorAll("[data-group-delete]").forEach(el=>
@@ -1310,18 +1346,19 @@ function renderTeacherList(){
   }
   // checkins is already sorted newest-first, so the first match per teacher is their latest checkin.
   const doneCount = filtered.filter(t=> checkins.some(c=>c.teacher_id===t.id)).length;
-  const summary = `<p class="registry-stat"><strong>${doneCount}</strong> / ${filtered.length} багш танилцсан</p>`;
+  const summary = perms.viewStats
+    ? `<p class="registry-stat"><strong>${doneCount}</strong> / ${filtered.length} багш танилцсан</p>` : ``;
   const rows = filtered.map(t=>{
     const group = t.group_id ? groups.find(g=>g.id===t.group_id) : null;
     const last = checkins.find(c=>c.teacher_id===t.id);
-    const status = last
+    const status = perms.viewStats ? (last
       ? `<span class="teacher-status done">✓ Танилцсан · ${fmtDateTime(last.checked_in_at)}</span>`
-      : `<span class="teacher-status pending">Танилцаагүй</span>`;
+      : `<span class="teacher-status pending">Танилцаагүй</span>`) : ``;
     return `<div class="teacher-row">
       <span class="teacher-name">${escapeHtml(t.name)}</span>
       ${group ? `<span class="teacher-group">${escapeHtml(group.name)}</span>` : ``}
       ${status}
-      <button class="icon-btn danger" title="Устгах" data-teacher-delete="${t.id}">✕</button>
+      ${perms.manageRegistry ? `<button class="icon-btn danger" title="Устгах" data-teacher-delete="${t.id}">✕</button>` : ``}
     </div>`;
   }).join("");
   list.innerHTML = summary + rows;
@@ -1382,6 +1419,68 @@ async function deleteTeacher(id){
   if(!confirm(`"${t.name}"-г бүртгэлээс устгах уу?`)) return;
   const { error } = await supabase.from("teachers").delete().eq("id", id);
   if(error){ showToast("Устгахад алдаа: " + error.message, true); return; }
+}
+
+/* ---------------- admin permission management (owner/unrestricted only) ---------------- */
+// RLS only lets an unrestricted admin (no row for their own email) write to
+// admin_permissions, so this UI is harmless to show only to them — a
+// restricted admin's writes would be rejected server-side regardless.
+async function loadAllPermRows(){
+  if(!perms.unrestricted) return;
+  const { data, error } = await supabase.from("admin_permissions").select("*").order("email", { ascending:true });
+  if(error){ showToast("Эрхийн жагсаалт ачаалахад алдаа: " + error.message, true); return; }
+  allPermRows = data || [];
+  renderPermList();
+}
+function renderPermList(){
+  const el = document.getElementById("perm-list");
+  if(!el) return;
+  if(allPermRows.length===0){ el.innerHTML = `<p class="hint">Хязгаарлагдсан админ алга байна.</p>`; return; }
+  el.innerHTML = allPermRows.map(r=>`
+    <div class="teacher-row">
+      <span class="teacher-name">${escapeHtml(r.email)}</span>
+      <button class="icon-btn" title="Засах" data-perm-edit="${escapeHtml(r.email)}">✎</button>
+    </div>`).join("");
+  el.querySelectorAll("[data-perm-edit]").forEach(b=>
+    b.addEventListener("click", ()=>{
+      document.getElementById("perm-email-input").value = b.dataset.permEdit;
+      loadPermForEmail();
+    }));
+}
+async function loadPermForEmail(){
+  const email = document.getElementById("perm-email-input").value.trim().toLowerCase();
+  if(!email){ showToast("Имэйл оруулна уу.", true); return; }
+  currentPermEmail = email;
+  const { data, error } = await supabase.from("admin_permissions").select("*").eq("email", email).maybeSingle();
+  if(error){ showToast("Ачаалахад алдаа: " + error.message, true); return; }
+  document.getElementById("perm-view-stats").checked = data ? !!data.can_view_stats : false;
+  document.getElementById("perm-qr-order").checked = data ? !!data.can_manage_qr_order : false;
+  document.getElementById("perm-manage-files").checked = data ? !!data.can_manage_files : false;
+  document.getElementById("perm-manage-registry").checked = data ? !!data.can_manage_registry : false;
+  document.getElementById("perm-switches").hidden = false;
+}
+async function savePermForEmail(){
+  if(!currentPermEmail) return;
+  const { error } = await supabase.from("admin_permissions").upsert({
+    email: currentPermEmail,
+    can_view_stats: document.getElementById("perm-view-stats").checked,
+    can_manage_qr_order: document.getElementById("perm-qr-order").checked,
+    can_manage_files: document.getElementById("perm-manage-files").checked,
+    can_manage_registry: document.getElementById("perm-manage-registry").checked,
+    updated_at: new Date().toISOString(),
+  });
+  if(error){ showToast("Хадгалахад алдаа: " + error.message, true); return; }
+  showToast("Эрх хадгалагдлаа.");
+  loadAllPermRows();
+}
+async function removePermForEmail(){
+  if(!currentPermEmail) return;
+  if(!confirm(`"${currentPermEmail}" хаягийн хязгаарлалтыг арилгаж, бүх эрх өгөх үү?`)) return;
+  const { error } = await supabase.from("admin_permissions").delete().eq("email", currentPermEmail);
+  if(error){ showToast("Устгахад алдаа: " + error.message, true); return; }
+  document.getElementById("perm-switches").hidden = true;
+  showToast("Хязгаарлалт арилгагдлаа.");
+  loadAllPermRows();
 }
 
 /* ---------------- modals ---------------- */
@@ -1652,6 +1751,9 @@ function wireStaticEvents(){
   document.getElementById("teacher-filter-select").addEventListener("change", renderTeacherList);
   document.getElementById("group-add-go").addEventListener("click", addGroup);
   document.getElementById("gate-code-save").addEventListener("click", saveGateCode);
+  document.getElementById("perm-load-go").addEventListener("click", loadPermForEmail);
+  document.getElementById("perm-save-go").addEventListener("click", savePermForEmail);
+  document.getElementById("perm-delete-go").addEventListener("click", removePermForEmail);
 
   document.getElementById("search-input").addEventListener("input", render);
 

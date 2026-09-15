@@ -163,7 +163,7 @@
       </div>
       <p class="hint" style="margin:-8px 0 16px;">Нэвтрэх код нэг нийтлэг — бүгд ижилхэн код ашиглана. Багш өөрийн бүлэг, нэрээ зөв тохируулж оруулснаар систем хэн орсныг тэмдэглэдэг (бүлэг буруу бол нэр зөв байсан ч нэвтрэхгүй).</p>
       <div class="registry-layout-top">
-        <div class="registry-panel">
+        <div class="registry-panel" id="gate-code-panel" hidden>
           <h3>Нийтлэг нэвтрэх код</h3>
           <div class="registry-add-row">
             <input type="text" id="gate-code-input" placeholder="Жишээ: 184ISO" />
@@ -173,18 +173,37 @@
         </div>
         <div class="registry-panel">
           <h3>Мэргэжлийн хөгжлийн бүлгүүд</h3>
-          <div class="registry-add-row">
+          <div class="registry-add-row" id="group-add-row" hidden>
             <input type="text" id="group-name-input" placeholder="Жишээ: 1-р бүлэг" />
             <button class="btn-primary" id="group-add-go">+ Нэмэх</button>
           </div>
           <div id="group-list"></div>
         </div>
       </div>
-      <div class="registry-panel" style="margin-bottom:20px;">
+      <div class="registry-panel" id="registry-stats-panel" style="margin-bottom:20px;" hidden>
         <h3>Танилцсаны статистик</h3>
         <div id="registry-stats"></div>
       </div>
-      <div class="registry-panel" style="margin-bottom:20px;">
+      <div class="registry-panel" id="perm-admin-panel" style="margin-bottom:20px;" hidden>
+        <h3>Админ эрхийн удирдлага</h3>
+        <p class="hint">Имэйл хаягаар админы эрхийг тохируулна. Бүртгэгдээгүй имэйл автоматаар бүх эрхтэй (хязгааргүй) гэж тооцогдоно — зөвхөн хязгаарлах шаардлагатай хүмүүсийг л энд нэмнэ. Акаунтыг өөрөө Supabase dashboard дээрээ үүсгэнэ.</p>
+        <div class="registry-add-row">
+          <input type="email" id="perm-email-input" placeholder="admin@example.com" />
+          <button class="btn-ghost" id="perm-load-go">Ачаалах / Шинээр</button>
+        </div>
+        <div id="perm-switches" hidden>
+          <div class="perm-switch-row"><span>Статистик харах</span><label class="switch"><input type="checkbox" id="perm-view-stats"><span class="slider"></span></label></div>
+          <div class="perm-switch-row"><span>QR байрлал солих</span><label class="switch"><input type="checkbox" id="perm-qr-order"><span class="slider"></span></label></div>
+          <div class="perm-switch-row"><span>Файл зөөвөрлөх</span><label class="switch"><input type="checkbox" id="perm-manage-files"><span class="slider"></span></label></div>
+          <div class="perm-switch-row"><span>Бүртгэл үүсгэх/устгах</span><label class="switch"><input type="checkbox" id="perm-manage-registry"><span class="slider"></span></label></div>
+          <div class="modal-actions" style="justify-content:flex-start;margin-top:14px;">
+            <button class="btn-primary" id="perm-save-go">Хадгалах</button>
+            <button class="btn-ghost" id="perm-delete-go">Хязгаарлалт арилгах</button>
+          </div>
+        </div>
+        <div id="perm-list" style="margin-top:18px;"></div>
+      </div>
+      <div class="registry-panel" id="teacher-bulk-panel" style="margin-bottom:20px;" hidden>
         <h3>Багш нарыг олноор нэмэх</h3>
         <p class="hint">Нэр бүрийг тусдаа мөрөнд бичиж/paste хийгээд, аль бүлэгт орохыг нь сонгож нэг дор нэмнэ.</p>
         <textarea id="teacher-bulk-input" rows="6" placeholder="Нэр 1&#10;Нэр 2&#10;Нэр 3&#10;..."></textarea>
@@ -197,7 +216,7 @@
       <div class="registry-layout">
         <div class="registry-panel">
           <h3>Багш нар</h3>
-          <div class="registry-add-row">
+          <div class="registry-add-row" id="teacher-add-row" hidden>
             <input type="text" id="teacher-name-input" placeholder="Багшийн нэр" />
             <select id="teacher-group-select"></select>
             <button class="btn-primary" id="teacher-add-go">+ Нэмэх</button>
@@ -207,7 +226,7 @@
           </select>
           <div id="teacher-list"></div>
         </div>
-        <div class="registry-panel">
+        <div class="registry-panel" id="checkin-list-panel" hidden>
           <h3>Сүүлийн нэвтрэлтүүд</h3>
           <div id="checkin-list"></div>
         </div>

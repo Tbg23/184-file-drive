@@ -193,3 +193,27 @@ end;
 $$;
 
 grant execute on function log_teacher_checkin(text, text, text) to anon, authenticated;
+
+-- Админы эрхийн систем: имэйлээр түлхүүрлэгдэнэ (auth.users-ийг клиент
+-- талаас жагсааж болдоггүй тул UUID биш имэйл ашиглана — эзэмшигч Supabase
+-- dashboard дээрээ шинэ админ акаунт үүсгэсний дараа зөвхөн тэдний имэйлийг
+-- мэдэхэд хангалттай). Хэрэв имэйл энд БҮРТГЭГДЭЭГҮЙ бол тухайн хэрэглэгч
+-- БҮРЭН ЭРХТЭЙ (хязгааргүй) гэж тооцогдоно — зөвхөн хязгаарлах шаардлагатай
+-- админуудыг л энд нэмнэ.
+create table if not exists admin_permissions (
+  email text primary key,
+  can_view_stats boolean not null default false,
+  can_manage_qr_order boolean not null default false,
+  can_manage_files boolean not null default false,
+  can_manage_registry boolean not null default false,
+  updated_at timestamptz not null default now()
+);
+alter table admin_permissions enable row level security;
+create policy "authenticated read admin_permissions" on admin_permissions for select
+  using (auth.role() = 'authenticated');
+-- Зөвхөн БҮРЭН ЭРХТЭЙ (энэ хүснэгтэд өөрийн мөргүй) хэрэглэгч бичиж/засаж/
+-- устгаж болно — ингэснээр хязгаарлагдсан админ өөртөө дахин эрх нэмж
+-- чадахгүй.
+create policy "unrestricted admins manage admin_permissions" on admin_permissions for all
+  using (not exists (select 1 from admin_permissions p where p.email = (auth.jwt() ->> 'email')))
+  with check (not exists (select 1 from admin_permissions p where p.email = (auth.jwt() ->> 'email')));
