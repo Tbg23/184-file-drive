@@ -211,9 +211,25 @@ create table if not exists admin_permissions (
 alter table admin_permissions enable row level security;
 create policy "authenticated read admin_permissions" on admin_permissions for select
   using (auth.role() = 'authenticated');
+
+-- RLS-ийн policy admin_permissions-ийг шууд дотроосоо лавлавал infinite
+-- recursion өгдөг тул security definer функцээр (RLS-ийг тойрч) шалгана —
+-- Supabase-ийн стандарт зөвлөмжит арга.
+create or replace function is_unrestricted_admin()
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select not exists (
+    select 1 from admin_permissions where email = (auth.jwt() ->> 'email')
+  );
+$$;
+
 -- Зөвхөн БҮРЭН ЭРХТЭЙ (энэ хүснэгтэд өөрийн мөргүй) хэрэглэгч бичиж/засаж/
 -- устгаж болно — ингэснээр хязгаарлагдсан админ өөртөө дахин эрх нэмж
 -- чадахгүй.
 create policy "unrestricted admins manage admin_permissions" on admin_permissions for all
-  using (not exists (select 1 from admin_permissions p where p.email = (auth.jwt() ->> 'email')))
-  with check (not exists (select 1 from admin_permissions p where p.email = (auth.jwt() ->> 'email')));
+  using (is_unrestricted_admin())
+  with check (is_unrestricted_admin());
