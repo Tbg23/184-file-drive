@@ -384,6 +384,7 @@ function render(){
         ${isAdmin ? `<div class="row-actions">
           ${perms.manageFiles ? `<button class="icon-btn" title="Зөөх" data-move-folder="${f.id}">📁</button>` : ``}
           <button class="icon-btn" title="Нэр солих" data-rename-folder="${f.id}">✎</button>
+          <button class="icon-btn danger" title="Устгах" data-delete-folder="${f.id}">✕</button>
         </div>` : ``}
       </td>
     </tr>`;
@@ -427,6 +428,8 @@ function render(){
     el.addEventListener("click", (e)=>{ e.stopPropagation(); openMoveModal("folder", el.dataset.moveFolder); }));
   listing.querySelectorAll("[data-rename-folder]").forEach(el=>
     el.addEventListener("click", (e)=>{ e.stopPropagation(); openRename("folder", el.dataset.renameFolder); }));
+  listing.querySelectorAll("[data-delete-folder]").forEach(el=>
+    el.addEventListener("click", (e)=>{ e.stopPropagation(); deleteFolder(el.dataset.deleteFolder); }));
   if(isAdmin && perms.manageFiles) wireFolderDrag(listing);
 }
 
@@ -1564,10 +1567,43 @@ async function deleteFile(id){
   const f = fileById(id);
   if(!f) return;
   if(!confirm(`"${f.name}" файлыг устгах уу?`)) return;
+  if(!confirm("Дахин баталгаажуулна уу — энэ үйлдлийг буцаах боломжгүй.")) return;
   const { error: rmErr } = await supabase.storage.from(BUCKET).remove([f.storage_path]);
   if(rmErr){ showToast("Устгахад алдаа: " + rmErr.message, true); return; }
   const { error: dbErr } = await supabase.from("files").delete().eq("id", f.id);
   if(dbErr){ showToast("Устгахад алдаа: " + dbErr.message, true); return; }
+}
+
+// Deleting a folder cascades (DB-level) to all its subfolders and the files
+// inside them, but that only removes the *rows* — the underlying storage
+// blobs would be orphaned unless removed explicitly first, so this walks the
+// whole subtree to collect every file that needs its storage object cleaned up.
+function collectFolderSubtreeIds(id){
+  const ids = [id];
+  childFolders(id).forEach(f=> ids.push(...collectFolderSubtreeIds(f.id)));
+  return ids;
+}
+async function deleteFolder(id){
+  const f = folderById(id);
+  if(!f) return;
+  const subtreeIds = collectFolderSubtreeIds(id);
+  const subFolderCount = subtreeIds.length - 1;
+  const filesToDelete = files.filter(x=> subtreeIds.includes(x.folder_id));
+  let msg = `"${f.name}" фолдерыг устгах уу?`;
+  if(subFolderCount>0 || filesToDelete.length>0){
+    msg += ` Дотор нь ${subFolderCount} дэд фолдер, ${filesToDelete.length} файл байгаа бөгөөд ТЭД БҮГД хамт устна.`;
+  }
+  if(!confirm(msg)) return;
+  if(!confirm("Дахин баталгаажуулна уу — энэ үйлдлийг буцаах боломжгүй.")) return;
+  if(filesToDelete.length>0){
+    const { error: rmErr } = await supabase.storage.from(BUCKET).remove(filesToDelete.map(x=>x.storage_path));
+    if(rmErr){ showToast("Файл устгахад алдаа: " + rmErr.message, true); return; }
+  }
+  const { error: dbErr } = await supabase.from("folders").delete().eq("id", id);
+  if(dbErr){ showToast("Устгахад алдаа: " + dbErr.message, true); return; }
+  if(subtreeIds.includes(currentFolderId())){
+    location.hash = "f=" + encodeURIComponent(f.parent_id || "root");
+  }
 }
 
 /* ---------------- QR board ---------------- */
