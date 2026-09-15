@@ -381,8 +381,9 @@ function render(){
       </td>
       <td></td>
       <td>
-        ${isAdmin && perms.manageFiles ? `<div class="row-actions">
-          <button class="icon-btn" title="Зөөх" data-move-folder="${f.id}">📁</button>
+        ${isAdmin ? `<div class="row-actions">
+          ${perms.manageFiles ? `<button class="icon-btn" title="Зөөх" data-move-folder="${f.id}">📁</button>` : ``}
+          <button class="icon-btn" title="Нэр солих" data-rename-folder="${f.id}">✎</button>
         </div>` : ``}
       </td>
     </tr>`;
@@ -424,6 +425,8 @@ function render(){
     el.addEventListener("click", (e)=>{ e.stopPropagation(); openMoveModal("file", el.dataset.move); }));
   listing.querySelectorAll("[data-move-folder]").forEach(el=>
     el.addEventListener("click", (e)=>{ e.stopPropagation(); openMoveModal("folder", el.dataset.moveFolder); }));
+  listing.querySelectorAll("[data-rename-folder]").forEach(el=>
+    el.addEventListener("click", (e)=>{ e.stopPropagation(); openRename("folder", el.dataset.renameFolder); }));
   if(isAdmin && perms.manageFiles) wireFolderDrag(listing);
 }
 
@@ -1543,7 +1546,7 @@ async function doUpload(){
 let renameTarget = null; // { type: "file" | "qr", id }
 function openRename(type, id){
   renameTarget = { type, id };
-  const item = type === "qr" ? qrItemById(id) : fileById(id);
+  const item = type === "qr" ? qrItemById(id) : type === "folder" ? folderById(id) : fileById(id);
   if(!item) return;
   document.getElementById("rename-input").value = item.name;
   document.getElementById("rename-status").textContent = "";
@@ -1552,7 +1555,7 @@ function openRename(type, id){
 async function doRename(){
   const val = document.getElementById("rename-input").value.trim();
   if(!val || !renameTarget) return closeModal("modal-rename");
-  const table = renameTarget.type === "qr" ? "qr_items" : "files";
+  const table = renameTarget.type === "qr" ? "qr_items" : renameTarget.type === "folder" ? "folders" : "files";
   const { error } = await supabase.from(table).update({ name: val }).eq("id", renameTarget.id);
   if(error){ showToast("Нэр солиход алдаа: " + error.message, true); return; }
   closeModal("modal-rename");
