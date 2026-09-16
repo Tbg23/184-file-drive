@@ -7,6 +7,8 @@ const BUCKET = "files";
 let folders = [];
 let files = [];
 let qrItems = [];
+let qrCategories = [];
+let qrCategoryFilter = ""; // "" = all
 let qrSchedule = null;
 let calState = null;
 let calViewMode = "months"; // "months" | "quarters"
@@ -93,6 +95,12 @@ async function loadQrItems(){
   qrItems = data || [];
   render();
 }
+async function loadQrCategories(){
+  const { data, error } = await supabase.from("qr_categories").select("*").order("position", { ascending:true });
+  if(error){ showToast("Ангилал ачаалахад алдаа: " + error.message, true); return; }
+  qrCategories = data || [];
+  render();
+}
 async function loadQrSchedule(){
   const { data, error } = await supabase.from("qr_schedule").select("*").eq("id","main").maybeSingle();
   if(error){ showToast("Хуваарь ачаалахад алдаа: " + error.message, true); return; }
@@ -170,7 +178,7 @@ async function boot(){
   await Promise.all([loadGroups(), loadTeachers()]);
   renderGatePickers();
 
-  await Promise.all([loadData(), loadQrItems(), loadQrSchedule(), loadCalendarState()]);
+  await Promise.all([loadData(), loadQrItems(), loadQrCategories(), loadQrSchedule(), loadCalendarState()]);
   updateAdminUI();
 
   supabase
@@ -178,6 +186,7 @@ async function boot(){
     .on("postgres_changes", { event:"*", schema:"public", table:"files" }, loadData)
     .on("postgres_changes", { event:"*", schema:"public", table:"folders" }, loadData)
     .on("postgres_changes", { event:"*", schema:"public", table:"qr_items" }, loadQrItems)
+    .on("postgres_changes", { event:"*", schema:"public", table:"qr_categories" }, loadQrCategories)
     .on("postgres_changes", { event:"*", schema:"public", table:"qr_schedule" }, loadQrSchedule)
     .on("postgres_changes", { event:"*", schema:"public", table:"calendar_state" }, loadCalendarState)
     .on("postgres_changes", { event:"*", schema:"public", table:"dev_groups" }, loadGroups)
@@ -582,15 +591,27 @@ async function saveQrSchedule(){
   closeModal("modal-qr-schedule");
 }
 
+function renderQrCategoryTabs(){
+  const wrap = document.getElementById("qr-category-tabs");
+  const tabs = [{ id:"", name:"Бүгд" }, ...qrCategories];
+  wrap.innerHTML = tabs.map(c=>
+    `<button type="button" class="qr-category-tab${c.id===qrCategoryFilter ? " active" : ""}" data-qr-cat-filter="${c.id}">${escapeHtml(c.name)}</button>`
+  ).join("");
+  wrap.querySelectorAll("[data-qr-cat-filter]").forEach(el=>
+    el.addEventListener("click", ()=>{ qrCategoryFilter = el.dataset.qrCatFilter; renderQrGrid(); }));
+}
+
 function renderQrGrid(){
   const isAdmin = !!session;
   document.getElementById("qr-admin-actions").hidden = !isAdmin;
+  renderQrCategoryTabs();
   const grid = document.getElementById("qr-grid");
-  if(qrItems.length===0){
+  const shown = qrCategoryFilter ? qrItems.filter(x=>x.category_id===qrCategoryFilter) : qrItems;
+  if(shown.length===0){
     grid.innerHTML = `<div class="empty">QR код алга байна.</div>`;
     return;
   }
-  grid.innerHTML = qrItems.map(item=>{
+  grid.innerHTML = shown.map(item=>{
     const imgUrl = publicUrlFor(item.storage_path);
     return `<div class="qr-card" data-qr-id="${item.id}" draggable="${isAdmin && perms.manageQrOrder}">
       <div class="qr-actions">
@@ -1673,6 +1694,7 @@ function addGeneratedQrToBoard(){
   const status = document.getElementById("qr-add-status");
   const name = nameInput.value.trim();
   const targetUrl = document.getElementById("qr-item-url").value.trim();
+  const categoryId = document.getElementById("qr-item-category").value || null;
   if(!name){ status.textContent = "Нэр оруулна уу."; return; }
   const canvas = document.getElementById("qr-gen-canvas");
   status.textContent = "Хадгалж байна…";
@@ -1684,7 +1706,7 @@ function addGeneratedQrToBoard(){
     if(upErr){ status.textContent = "Алдаа: " + upErr.message; return; }
     const nextPosition = qrItems.reduce((max,x)=> Math.max(max, x.position ?? 0), -1) + 1;
     const { error: dbErr } = await supabase.from("qr_items")
-      .insert({ id, name, storage_path: path, position: nextPosition, target_url: targetUrl });
+      .insert({ id, name, storage_path: path, position: nextPosition, target_url: targetUrl, category_id: categoryId });
     if(dbErr){
       await supabase.storage.from(BUCKET).remove([path]);
       status.textContent = "Алдаа: " + dbErr.message;
@@ -1705,6 +1727,7 @@ async function openQrGenFromViewer(){
   document.getElementById("qr-gen-canvas").hidden = true;
   document.getElementById("qr-gen-placeholder").hidden = false;
   document.getElementById("qr-add-go").disabled = true;
+  populateQrCategorySelect();
   openModal("modal-qr-add");
   await generateQrPreview();
 }
@@ -1716,6 +1739,57 @@ async function deleteQrItem(id){
   if(rmErr){ showToast("Устгахад алдаа: " + rmErr.message, true); return; }
   const { error: dbErr } = await supabase.from("qr_items").delete().eq("id", id);
   if(dbErr){ showToast("Устгахад алдаа: " + dbErr.message, true); return; }
+}
+
+/* ---------------- QR categories ---------------- */
+function populateQrCategorySelect(){
+  const sel = document.getElementById("qr-item-category");
+  sel.innerHTML = `<option value="">Ангилалгүй</option>` +
+    qrCategories.map(c=> `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
+}
+function openQrCategoryManager(){
+  document.getElementById("qr-category-name-input").value = "";
+  renderQrCategoryManagerList();
+  openModal("modal-qr-category");
+}
+function renderQrCategoryManagerList(){
+  const list = document.getElementById("qr-category-list");
+  if(qrCategories.length===0){
+    list.innerHTML = `<p class="hint">Ангилал алга байна. Дээрээс нэмнэ үү.</p>`;
+    return;
+  }
+  list.innerHTML = qrCategories.map(c=>{
+    const count = qrItems.filter(x=>x.category_id===c.id).length;
+    return `<div class="group-row">
+      <span class="group-name">${escapeHtml(c.name)}</span>
+      <span class="group-count">${count} QR</span>
+      <button class="icon-btn danger" title="Устгах" data-qr-cat-delete="${c.id}">✕</button>
+    </div>`;
+  }).join("");
+  list.querySelectorAll("[data-qr-cat-delete]").forEach(el=>
+    el.addEventListener("click", ()=> deleteQrCategory(el.dataset.qrCatDelete)));
+}
+async function addQrCategory(){
+  const input = document.getElementById("qr-category-name-input");
+  const name = input.value.trim();
+  if(!name){ showToast("Ангиллын нэрээ оруулна уу.", true); return; }
+  const nextPosition = qrCategories.reduce((max,c)=> Math.max(max, c.position ?? 0), -1) + 1;
+  const { error } = await supabase.from("qr_categories").insert({ id: uid(), name, position: nextPosition });
+  if(error){ showToast("Нэмэхэд алдаа: " + error.message, true); return; }
+  input.value = "";
+  renderQrCategoryManagerList();
+}
+async function deleteQrCategory(id){
+  const c = qrCategories.find(x=>x.id===id);
+  if(!c) return;
+  const count = qrItems.filter(x=>x.category_id===id).length;
+  const msg = count>0
+    ? `"${c.name}" ангиллыг устгах уу? Энэ ангилалд байгаа ${count} QR-ийн ангилал хоосорно (тэд устахгүй).`
+    : `"${c.name}" ангиллыг устгах уу?`;
+  if(!confirm(msg)) return;
+  const { error } = await supabase.from("qr_categories").delete().eq("id", id);
+  if(error){ showToast("Устгахад алдаа: " + error.message, true); return; }
+  renderQrCategoryManagerList();
 }
 
 /* ---------------- file viewer ---------------- */
@@ -1820,8 +1894,11 @@ function wireStaticEvents(){
     document.getElementById("qr-gen-canvas").hidden = true;
     document.getElementById("qr-gen-placeholder").hidden = false;
     document.getElementById("qr-add-go").disabled = true;
+    populateQrCategorySelect();
     openModal("modal-qr-add");
   });
+  document.getElementById("qr-category-manage-btn").addEventListener("click", openQrCategoryManager);
+  document.getElementById("qr-category-add-go").addEventListener("click", addQrCategory);
   document.getElementById("qr-gen-go").addEventListener("click", generateQrPreview);
   document.getElementById("qr-add-go").addEventListener("click", addGeneratedQrToBoard);
 

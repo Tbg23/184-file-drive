@@ -73,10 +73,12 @@
       <div class="topbar">
         <div class="crumbs"><span>Дүрэм, журам</span></div>
         <div class="actions" id="qr-admin-actions" hidden>
+          <button class="btn-ghost" id="qr-category-manage-btn">🏷️ Ангилал удирдах</button>
           <button class="btn-primary" id="qr-add-btn">➕ QR нэмэх</button>
         </div>
       </div>
       <p class="hint" style="margin:-8px 0 16px;">Нэрээ олоод, QR-аа утасны камераар уншуулж жагсаалт/журмаа нээнэ үү.</p>
+      <div class="qr-category-tabs" id="qr-category-tabs"></div>
       <div id="qr-grid" class="qr-grid"></div>
     </div>
     <div id="calendar-view" hidden>
@@ -317,6 +319,8 @@
     <input type="text" id="qr-item-name" placeholder="Жишээ: Б.Наранцэцэг" />
     <label>Холбоос (URL)</label>
     <input type="url" id="qr-item-url" placeholder="https://example.com" />
+    <label>Ангилал</label>
+    <select id="qr-item-category"></select>
     <div class="qr-gen-preview">
       <canvas id="qr-gen-canvas" width="240" height="240" hidden></canvas>
       <div class="hint" id="qr-gen-placeholder">QR код энд гарна</div>
@@ -326,6 +330,21 @@
       <button class="btn-ghost" data-close="modal-qr-add">Болих</button>
       <button class="btn-ghost" id="qr-gen-go">QR үүсгэх</button>
       <button class="btn-primary" id="qr-add-go" disabled>Самбарт нэмэх</button>
+    </div>
+  </div>
+</div>
+
+<!-- QR category manager modal -->
+<div class="overlay" id="modal-qr-category">
+  <div class="modal">
+    <h2>Ангилал удирдах</h2>
+    <div class="registry-add-row">
+      <input type="text" id="qr-category-name-input" placeholder="Жишээ: Удирдлага" />
+      <button class="btn-primary" id="qr-category-add-go">+ Нэмэх</button>
+    </div>
+    <div id="qr-category-list"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost" data-close="modal-qr-category">Хаах</button>
     </div>
   </div>
 </div>

@@ -53,6 +53,17 @@ insert into folders (id, name, parent_id) values
 on conflict (id) do nothing;
 
 -- QR самбар: админ өөрийн загварчилсан QR зургаа нэрийн хамт байршуулна.
+create table if not exists qr_categories (
+  id text primary key,
+  name text not null unique,
+  position integer not null default 0,
+  created_at timestamptz not null default now()
+);
+alter table qr_categories enable row level security;
+create policy "public read qr_categories" on qr_categories for select using (true);
+create policy "authenticated manage qr_categories" on qr_categories for all
+  using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
 create table if not exists qr_items (
   id text primary key,
   name text not null,
@@ -61,6 +72,7 @@ create table if not exists qr_items (
 );
 alter table qr_items add column if not exists position integer not null default 0;
 alter table qr_items add column if not exists target_url text;
+alter table qr_items add column if not exists category_id text references qr_categories(id) on delete set null;
 alter table qr_items enable row level security;
 create policy "public read qr_items" on qr_items for select using (true);
 create policy "authenticated write qr_items" on qr_items for all
