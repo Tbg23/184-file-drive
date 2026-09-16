@@ -623,34 +623,61 @@ function renderQrCategoryTabs(){
     el.addEventListener("click", ()=>{ qrCategoryFilter = el.dataset.qrCatFilter; renderQrGrid(); }));
 }
 
+function buildQrCardHtml(item, isAdmin){
+  const imgUrl = publicUrlFor(item.storage_path);
+  return `<div class="qr-card" data-qr-id="${item.id}" draggable="${isAdmin && perms.manageQrOrder}">
+    <div class="qr-actions">
+      <button class="icon-btn" title="Татах" data-qr-download="${item.id}">⬇</button>
+      ${isAdmin ? `
+        <button class="icon-btn" title="Нэр солих" data-qr-rename="${item.id}">✎</button>
+        <button class="icon-btn danger" title="Устгах" data-qr-delete="${item.id}">✕</button>
+      ` : ``}
+    </div>
+    <img src="${imgUrl}" alt="${escapeHtml(item.name)}" />
+    <div class="qr-name">${escapeHtml(item.name)}</div>
+    ${isAdmin ? `<select class="qr-card-category-select" data-qr-cat-assign="${item.id}">
+      <option value="">Ангилалгүй</option>
+      ${qrCategories.map(c=> `<option value="${c.id}"${c.id===item.category_id ? " selected" : ""}>${escapeHtml(c.name)}</option>`).join("")}
+    </select>` : ``}
+  </div>`;
+}
+
+// "Бүгд" tab groups items into labeled sections by category (matching how
+// admin categorizes them); picking one specific category tab narrows to a
+// single flat grid instead, which is also the only mode drag-reordering is
+// offered in — reordering across section boundaries wouldn't mean much.
 function renderQrGrid(){
   const isAdmin = !!session;
   document.getElementById("qr-admin-actions").hidden = !isAdmin;
   renderQrCategoryTabs();
   const grid = document.getElementById("qr-grid");
-  const shown = qrCategoryFilter ? qrItems.filter(x=>x.category_id===qrCategoryFilter) : qrItems;
-  if(shown.length===0){
-    grid.innerHTML = `<div class="empty">QR код алга байна.</div>`;
-    return;
+
+  if(!qrCategoryFilter){
+    if(qrItems.length===0){
+      grid.className = "qr-grid";
+      grid.innerHTML = `<div class="empty">QR код алга байна.</div>`;
+      return;
+    }
+    const sections = qrCategories.map(c=> ({ name:c.name, items: qrItems.filter(x=>x.category_id===c.id) }));
+    const uncategorized = qrItems.filter(x=>!x.category_id);
+    if(uncategorized.length>0) sections.push({ name:"Ангилалгүй", items: uncategorized });
+    grid.className = "qr-grid-sections";
+    grid.innerHTML = sections.filter(s=>s.items.length>0).map(s=> `
+      <div class="qr-section">
+        <h3 class="qr-section-heading">${escapeHtml(s.name)}</h3>
+        <div class="qr-grid">${s.items.map(item=> buildQrCardHtml(item, isAdmin)).join("")}</div>
+      </div>`
+    ).join("");
+  } else {
+    const shown = qrItems.filter(x=>x.category_id===qrCategoryFilter);
+    grid.className = "qr-grid";
+    if(shown.length===0){
+      grid.innerHTML = `<div class="empty">QR код алга байна.</div>`;
+      return;
+    }
+    grid.innerHTML = shown.map(item=> buildQrCardHtml(item, isAdmin)).join("");
   }
-  grid.innerHTML = shown.map(item=>{
-    const imgUrl = publicUrlFor(item.storage_path);
-    return `<div class="qr-card" data-qr-id="${item.id}" draggable="${isAdmin && perms.manageQrOrder}">
-      <div class="qr-actions">
-        <button class="icon-btn" title="Татах" data-qr-download="${item.id}">⬇</button>
-        ${isAdmin ? `
-          <button class="icon-btn" title="Нэр солих" data-qr-rename="${item.id}">✎</button>
-          <button class="icon-btn danger" title="Устгах" data-qr-delete="${item.id}">✕</button>
-        ` : ``}
-      </div>
-      <img src="${imgUrl}" alt="${escapeHtml(item.name)}" />
-      <div class="qr-name">${escapeHtml(item.name)}</div>
-      ${isAdmin ? `<select class="qr-card-category-select" data-qr-cat-assign="${item.id}">
-        <option value="">Ангилалгүй</option>
-        ${qrCategories.map(c=> `<option value="${c.id}"${c.id===item.category_id ? " selected" : ""}>${escapeHtml(c.name)}</option>`).join("")}
-      </select>` : ``}
-    </div>`;
-  }).join("");
+
   grid.querySelectorAll("[data-qr-rename]").forEach(el=>
     el.addEventListener("click", ()=> openRename("qr", el.dataset.qrRename)));
   grid.querySelectorAll("[data-qr-delete]").forEach(el=>
@@ -661,7 +688,7 @@ function renderQrGrid(){
     el.addEventListener("click", (e)=> e.stopPropagation()));
   grid.querySelectorAll("[data-qr-cat-assign]").forEach(el=>
     el.addEventListener("change", ()=> assignQrCategory(el.dataset.qrCatAssign, el.value || null)));
-  if(isAdmin && perms.manageQrOrder) wireQrDrag(grid);
+  if(qrCategoryFilter && isAdmin && perms.manageQrOrder) wireQrDrag(grid);
 }
 async function assignQrCategory(id, categoryId){
   const { error } = await supabase.from("qr_items").update({ category_id: categoryId }).eq("id", id);
