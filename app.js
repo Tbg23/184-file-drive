@@ -645,6 +645,10 @@ function renderQrGrid(){
       </div>
       <img src="${imgUrl}" alt="${escapeHtml(item.name)}" />
       <div class="qr-name">${escapeHtml(item.name)}</div>
+      ${isAdmin ? `<select class="qr-card-category-select" data-qr-cat-assign="${item.id}">
+        <option value="">Ангилалгүй</option>
+        ${qrCategories.map(c=> `<option value="${c.id}"${c.id===item.category_id ? " selected" : ""}>${escapeHtml(c.name)}</option>`).join("")}
+      </select>` : ``}
     </div>`;
   }).join("");
   grid.querySelectorAll("[data-qr-rename]").forEach(el=>
@@ -653,7 +657,15 @@ function renderQrGrid(){
     el.addEventListener("click", ()=> deleteQrItem(el.dataset.qrDelete)));
   grid.querySelectorAll("[data-qr-download]").forEach(el=>
     el.addEventListener("click", ()=> downloadQrItemImage(qrItemById(el.dataset.qrDownload), el)));
+  grid.querySelectorAll("[data-qr-cat-assign]").forEach(el=>
+    el.addEventListener("click", (e)=> e.stopPropagation()));
+  grid.querySelectorAll("[data-qr-cat-assign]").forEach(el=>
+    el.addEventListener("change", ()=> assignQrCategory(el.dataset.qrCatAssign, el.value || null)));
   if(isAdmin && perms.manageQrOrder) wireQrDrag(grid);
+}
+async function assignQrCategory(id, categoryId){
+  const { error } = await supabase.from("qr_items").update({ category_id: categoryId }).eq("id", id);
+  if(error){ showToast("Ангилал онооход алдаа: " + error.message, true); return; }
 }
 
 // The on-site QR image has no text on it (name shows as separate HTML below
