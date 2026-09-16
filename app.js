@@ -162,12 +162,17 @@ async function boot(){
 
   wireStaticEvents();
 
-  // Skip the gate on a page refresh if we unlocked within the last hour, or
-  // if this is an already-authenticated admin (their Supabase session alone
-  // proves who they are — no reason to also make them re-clear the teacher
-  // gate on every reload).
+  // Skip the gate on a page refresh if the teacher unlock is still within its
+  // window, or if this is an already-authenticated admin (their Supabase
+  // session alone proves who they are — the 30-minute teacher timeout does
+  // not apply to admins at all).
   const unlockedUntil = Number(localStorage.getItem("iso184_unlocked_until") || 0);
-  if(session || unlockedUntil > Date.now()) showApp();
+  if(session){
+    showApp();
+  } else if(unlockedUntil > Date.now()){
+    scheduleTeacherAutoLogout(unlockedUntil - Date.now());
+    showApp();
+  }
 
   // Groups power the gate's group picker and are needed before any login
   // happens, so load them unconditionally — RLS allows public read (only
@@ -199,7 +204,22 @@ async function boot(){
   window.addEventListener("hashchange", render);
 }
 
-const UNLOCK_DURATION_MS = 60 * 60 * 1000; // stay logged in for 1 hour across refreshes
+const UNLOCK_DURATION_MS = 30 * 60 * 1000; // teacher gate unlock lasts 30 minutes (admins are exempt)
+let teacherLogoutTimer = null;
+function scheduleTeacherAutoLogout(msFromNow){
+  if(teacherLogoutTimer) clearTimeout(teacherLogoutTimer);
+  teacherLogoutTimer = setTimeout(()=>{ if(!session) teacherLogout(); }, Math.max(msFromNow, 0));
+}
+function teacherLogout(){
+  localStorage.removeItem("iso184_unlocked_until");
+  if(teacherLogoutTimer){ clearTimeout(teacherLogoutTimer); teacherLogoutTimer = null; }
+  document.getElementById("app").classList.remove("show");
+  document.getElementById("gate").style.display = "";
+  document.getElementById("gate-group-select").value = "";
+  document.getElementById("gate-name-input").value = "";
+  document.getElementById("gate-input").value = "";
+  document.getElementById("gate-err").textContent = "";
+}
 
 // One shared code (set by admin in "Бүртгэл") unlocks the site; the visitor
 // also picks their group + name so a valid login still logs a checkin row
@@ -220,6 +240,7 @@ async function tryUnlock(){
   if(error){ errEl.textContent = "Алдаа гарлаа: " + error.message; return; }
   if(!data){ errEl.textContent = "Бүлэг, нэр эсвэл код буруу байна. Дахин оролдоно уу."; return; }
   localStorage.setItem("iso184_unlocked_until", String(Date.now() + UNLOCK_DURATION_MS));
+  scheduleTeacherAutoLogout(UNLOCK_DURATION_MS);
   showApp();
 }
 function showApp(){
@@ -235,6 +256,7 @@ function updateAdminUI(){
   const statusEl = document.getElementById("admin-status");
   const btn = document.getElementById("admin-btn");
   document.getElementById("registry-nav-link").hidden = !session;
+  document.getElementById("teacher-logout-btn").hidden = !!session;
   if(session){
     statusEl.textContent = "Админ: " + session.user.email;
     btn.textContent = "Гарах";
@@ -1857,6 +1879,7 @@ function wireStaticEvents(){
   document.getElementById("gate-btn").addEventListener("click", tryUnlock);
   document.getElementById("gate-input").addEventListener("keydown", e=>{ if(e.key==="Enter") tryUnlock(); });
   document.getElementById("gate-admin-btn").addEventListener("click", ()=> openModal("modal-admin"));
+  document.getElementById("teacher-logout-btn").addEventListener("click", teacherLogout);
   document.getElementById("teacher-add-go").addEventListener("click", addTeacher);
   document.getElementById("teacher-bulk-go").addEventListener("click", addTeachersBulk);
   document.getElementById("teacher-filter-select").addEventListener("change", renderTeacherList);
