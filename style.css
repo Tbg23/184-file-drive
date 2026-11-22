@@ -40,6 +40,10 @@ img{max-width:100%;}
   padding:40px 36px;max-width:380px;width:100%;text-align:center;}
 .gate-mark{width:52px;height:52px;border-radius:14px;background:var(--accent);color:#fff;display:flex;
   align-items:center;justify-content:center;font-weight:800;font-size:20px;margin:0 auto 18px;letter-spacing:.5px;}
+/* shalgalt184-ийн нэвтрэх хэсэгтэй ижил лого */
+.login-logos{display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:14px;}
+.login-logos img{height:86px;width:auto;}
+.login-logos img.iso-l{height:64px;}
 .gate-card h1{font-size:19px;font-weight:800;margin:0 0 6px;text-wrap:balance;}
 .gate-card p{color:var(--text-dim);font-size:14px;margin:0 0 22px;line-height:1.5;}
 .gate-card input,.gate-card select{width:100%;padding:12px 14px;border-radius:10px;border:1.5px solid var(--border);
