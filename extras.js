@@ -69,6 +69,30 @@ function cmpClass(a, b){
   for(let i=0;i<3;i++){ if(A[i] < B[i]) return -1; if(A[i] > B[i]) return 1; }
   return 0;
 }
+// "Овог Нэр" → нэрээр нь (дараа нь овгоор) эрэмбэлнэ
+function splitName(full){
+  const w = String(full||"").trim().split(/\s+/);
+  return w.length > 1 ? { ovog: w[0], ner: w.slice(1).join(" ") } : { ovog: "", ner: w[0] || "" };
+}
+// Монгол цагаан толгойн дараалал (Ё нь Е-ийн дараа тусдаа үсэг, Ө/Ү нь О/У-ийн дараа)
+const MN_ABC = "АБВГДЕЁЖЗИЙКЛМНОӨПРСТУҮФХЦЧШЩЪЫЬЭЮЯ";
+function cmpMn(a, b){
+  const A = String(a).toUpperCase(), B = String(b).toUpperCase();
+  const n = Math.min(A.length, B.length);
+  for(let i=0;i<n;i++){
+    if(A[i] === B[i]) continue;
+    const x = MN_ABC.indexOf(A[i]), y = MN_ABC.indexOf(B[i]);
+    if(x >= 0 && y >= 0) return x - y;
+    if(x >= 0) return 1;   // тэмдэгт (зураас, зай) үсгээс өмнө
+    if(y >= 0) return -1;
+    return A.charCodeAt(i) - B.charCodeAt(i);
+  }
+  return A.length - B.length;
+}
+function cmpByGivenName(a, b){
+  const A = splitName(a), B = splitName(b);
+  return cmpMn(A.ner, B.ner) || cmpMn(A.ovog, B.ovog);
+}
 const gradeOf = c => { const m = /^(\d+)/.exec(c||""); return m ? Number(m[1]) : null; };
 
 function periodBar(st, onChange, extraHtml = ""){
@@ -206,7 +230,7 @@ function renderLateClass(){
   const box = document.getElementById("late-class");
   if(!box) return;
   if(!late.cls){ box.innerHTML = ""; return; }
-  const students = late.roster.filter(s=>s.class_name===late.cls);
+  const students = late.roster.filter(s=>s.class_name===late.cls).sort((a,b)=>cmpByGivenName(a.full_name, b.full_name));
   const saved = late.dayRows.filter(r=>r.class_name===late.cls);
   const me = staffName(); const admin = !!X.getSession();
   const rows = students.map((s, i)=>{
@@ -214,7 +238,7 @@ function renderLateClass(){
     const d = late.draft[s.full_name] || {};
     return `<div class="ex-stu ${done.length?"done":""} ${d.minutes?"marked":""}">
       <span class="ex-stu-no">${i+1}</span>
-      <span class="ex-stu-name">${esc(s.full_name)}
+      <span class="ex-stu-name"><span>${(n=>`${n.ovog?`<span class="ex-ovog">${esc(n.ovog)}</span> `:""}<b>${esc(n.ner)}</b>`)(splitName(s.full_name))}</span>
         ${done.map(r=>`<span class="ex-saved">✓ ${r.minutes_late ?? 0} мин${r.reason?` · ${esc(r.reason)}`:""}
           ${(admin || (r.recorded_by && r.recorded_by===me)) ? `<button type="button" class="ex-x" title="Устгах" data-del="${r.id}">✕</button>` : ""}</span>`).join("")}
       </span>
