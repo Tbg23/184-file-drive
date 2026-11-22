@@ -1,7 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
+import { initExtras, renderLate, renderMood } from "./extras.js";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+initExtras({ supabase, getSession: ()=> session, showToast: (m,e)=> showToast(m,e), escapeHtml: s=> escapeHtml(s) });
 const BUCKET = "files";
 
 let folders = [];
@@ -205,6 +207,35 @@ async function boot(){
 }
 
 const UNLOCK_DURATION_MS = 30 * 60 * 1000; // teacher gate unlock lasts 30 minutes (admins are exempt)
+const ATT_UNLOCK_MS = 10 * 60 * 60 * 1000; // ирц бүртгэгч нэг ажлын өдөр нэвтэрсэн хэвээр байна
+
+// Ирц бүртгэх горим: тусдаа кодоор орсон хүнд зөвхөн хоцролт/сэтгэл мэдрэмж нээгдэнэ
+function isAttMode(){ return !session && localStorage.getItem("iso184_mode") === "attendance"; }
+function showGateMode(mode){
+  document.getElementById("gate-main").hidden = mode !== "main";
+  document.getElementById("gate-att").hidden = mode !== "att";
+  document.getElementById("gate-att-err").textContent = "";
+}
+async function tryAttendanceUnlock(){
+  const name = document.getElementById("gate-att-name").value.trim();
+  const code = document.getElementById("gate-att-code").value.trim();
+  const errEl = document.getElementById("gate-att-err");
+  if(!name){ errEl.textContent = "Нэрээ оруулна уу."; return; }
+  if(!code){ errEl.textContent = "Ирцийн кодоо оруулна уу."; return; }
+  const btn = document.getElementById("gate-att-btn");
+  btn.disabled = true; errEl.textContent = "";
+  const { data, error } = await supabase.rpc("attendance_login", { code_input: code });
+  btn.disabled = false;
+  if(error){ errEl.textContent = "Алдаа гарлаа: " + error.message; return; }
+  if(!data){ errEl.textContent = "Ирцийн код буруу байна."; return; }
+  localStorage.setItem("iso184_mode", "attendance");
+  localStorage.setItem("iso184_att_code", code);
+  localStorage.setItem("iso184_teacher_name", name);
+  localStorage.setItem("iso184_unlocked_until", String(Date.now() + ATT_UNLOCK_MS));
+  scheduleTeacherAutoLogout(ATT_UNLOCK_MS);
+  location.hash = "#late";
+  showApp();
+}
 let teacherLogoutTimer = null;
 function scheduleTeacherAutoLogout(msFromNow){
   if(teacherLogoutTimer) clearTimeout(teacherLogoutTimer);
@@ -212,6 +243,13 @@ function scheduleTeacherAutoLogout(msFromNow){
 }
 function teacherLogout(){
   localStorage.removeItem("iso184_unlocked_until");
+  localStorage.removeItem("iso184_att_code");
+  localStorage.removeItem("iso184_teacher_name");
+  localStorage.removeItem("iso184_mode");
+  document.body.classList.remove("att-mode");
+  showGateMode("main");
+  document.getElementById("late-view").dataset.shown = "";
+  document.getElementById("mood-view").dataset.shown = "";
   if(teacherLogoutTimer){ clearTimeout(teacherLogoutTimer); teacherLogoutTimer = null; }
   document.getElementById("app").classList.remove("show");
   document.getElementById("gate").style.display = "";
@@ -240,19 +278,33 @@ async function tryUnlock(){
   if(error){ errEl.textContent = "Алдаа гарлаа: " + error.message; return; }
   if(!data){ errEl.textContent = "Бүлэг, нэр эсвэл код буруу байна. Дахин оролдоно уу."; return; }
   localStorage.setItem("iso184_unlocked_until", String(Date.now() + UNLOCK_DURATION_MS));
+  localStorage.removeItem("iso184_mode");
+  localStorage.removeItem("iso184_att_code");
   scheduleTeacherAutoLogout(UNLOCK_DURATION_MS);
   showApp();
 }
 function showApp(){
   document.getElementById("gate").style.display = "none";
   document.getElementById("app").classList.add("show");
-  if(!location.hash) location.hash = "#f=root";
+  applyModeUI();
+  if(isAttMode()){ if(!isLateRoute() && !isMoodRoute()) location.hash = "#late"; }
+  else if(!location.hash) location.hash = "#f=root";
   renderSidebar();
   render();
 }
 
 /* ---------------- admin auth ---------------- */
+function applyModeUI(){
+  const att = isAttMode();
+  document.body.classList.toggle("att-mode", att);
+  document.getElementById("late-nav-link").hidden = !(session || att);
+  document.getElementById("mood-nav-link").hidden = !(session || att);
+}
 function updateAdminUI(){
+  applyModeUI();
+  // нэвтрэлт солигдсон тул хоцролт/мэдрэмжийн хуудсыг шинэ эрхээр дахин ачаална
+  document.getElementById("late-view").dataset.shown = "";
+  document.getElementById("mood-view").dataset.shown = "";
   const statusEl = document.getElementById("admin-status");
   const btn = document.getElementById("admin-btn");
   document.getElementById("registry-nav-link").hidden = !session;
@@ -264,7 +316,7 @@ function updateAdminUI(){
     loadCheckins();
     loadPermissions();
   } else {
-    statusEl.textContent = "Зочин горим";
+    statusEl.textContent = isAttMode() ? "Ирц бүртгэгч: " + (localStorage.getItem("iso184_teacher_name") || "") : "Зочин горим";
     btn.textContent = "Админ нэвтрэх";
     gateCode = null;
     checkins = [];
@@ -309,6 +361,8 @@ async function adminLogin(){
 function isQrRoute(){ return location.hash === "#qr"; }
 function isCalendarRoute(){ return location.hash === "#calendar"; }
 function isRegistryRoute(){ return location.hash === "#registry"; }
+function isLateRoute(){ return location.hash === "#late"; }
+function isMoodRoute(){ return location.hash === "#mood"; }
 function currentFolderId(){
   const m = /f=([^&]+)/.exec(location.hash);
   return m ? decodeURIComponent(m[1]) : "root";
@@ -331,12 +385,32 @@ function render(){
   const qrRoute = isQrRoute();
   const calRoute = isCalendarRoute();
   const registryRoute = isRegistryRoute();
-  document.getElementById("folder-view").hidden = qrRoute || calRoute || registryRoute;
+  if(isAttMode() && !isLateRoute() && !isMoodRoute()){ location.hash = "#late"; return; }
+  if(!session && !isAttMode() && (isLateRoute() || isMoodRoute())){ location.hash = "#f=root"; return; }
+  const lateRoute = isLateRoute();
+  const moodRoute = isMoodRoute();
+  document.getElementById("folder-view").hidden = qrRoute || calRoute || registryRoute || lateRoute || moodRoute;
+  document.getElementById("late-view").hidden = !lateRoute;
+  document.getElementById("mood-view").hidden = !moodRoute;
   document.getElementById("qr-view").hidden = !qrRoute;
   document.getElementById("calendar-view").hidden = !calRoute;
   document.getElementById("registry-view").hidden = !registryRoute;
 
   renderSidebar();
+
+  if(lateRoute || moodRoute){
+    const nav = lateRoute ? "late" : "mood";
+    document.querySelectorAll(".side-link").forEach(a=>a.classList.toggle("active", a.dataset.nav===nav));
+    document.getElementById("viewer").classList.remove("show");
+    stopQrCountdown();
+    // Зөвхөн хуудас руу шилжихэд л дахин зурна (realtime шинэчлэлт бөглөж буй хүснэгтийг арилгахгүй)
+    const view = document.getElementById(nav + "-view");
+    if(view.dataset.shown !== "1"){ view.dataset.shown = "1"; (lateRoute ? renderLate : renderMood)(); }
+    document.getElementById(lateRoute ? "mood-view" : "late-view").dataset.shown = "";
+    return;
+  }
+  document.getElementById("late-view").dataset.shown = "";
+  document.getElementById("mood-view").dataset.shown = "";
 
   if(registryRoute){
     document.querySelectorAll(".side-link").forEach(a=>a.classList.toggle("active", a.dataset.nav==="registry"));
@@ -1276,11 +1350,13 @@ async function exportCalImage(){
 
 /* ---------------- registry (shared gate code + groups + teacher names + checkin log) ---------------- */
 let gateCode = null;
+let attCode = "";
 async function loadGateCode(){
   if(!session){ gateCode = null; return; }
-  const { data, error } = await supabase.from("site_settings").select("gate_code").eq("id","main").maybeSingle();
+  const { data, error } = await supabase.from("site_settings").select("*").eq("id","main").maybeSingle();
   if(error){ showToast("Код ачаалахад алдаа: " + error.message, true); return; }
   gateCode = data ? data.gate_code : null;
+  attCode = data ? (data.attendance_code || "") : "";
   render();
 }
 // Groups + teacher names are public (RLS allows anon select) since the gate's
@@ -1322,6 +1398,8 @@ function renderGatePickers(){
 function renderRegistry(){
   document.getElementById("gate-code-panel").hidden = !perms.manageRegistry;
   document.getElementById("gate-code-input").value = gateCode || "";
+  const attIn = document.getElementById("att-code-input");
+  if(document.activeElement !== attIn) attIn.value = attCode || "";
   document.getElementById("group-add-row").hidden = !perms.manageRegistry;
   document.getElementById("teacher-add-row").hidden = !perms.manageRegistry;
   document.getElementById("teacher-bulk-panel").hidden = !perms.manageRegistry;
@@ -1336,11 +1414,24 @@ function renderRegistry(){
   if(perms.unrestricted) renderPermList();
 }
 
+async function saveAttCode(){
+  const status = document.getElementById("att-code-status");
+  const code = document.getElementById("att-code-input").value.trim();
+  if(!code){ status.textContent = "Код хоосон байж болохгүй."; return; }
+  if(code === gateCode){ status.textContent = "Багшийн нийтлэг кодоос өөр код сонгоно уу."; return; }
+  const { error } = await supabase.from("site_settings")
+    .upsert({ id: "main", attendance_code: code, updated_at: new Date().toISOString() });
+  if(error){ status.textContent = ""; showToast("Хадгалахад алдаа: " + error.message, true); return; }
+  attCode = code;
+  status.textContent = "Хадгалагдсан";
+  setTimeout(()=>{ status.textContent = ""; }, 2500);
+}
 async function saveGateCode(){
   const input = document.getElementById("gate-code-input");
   const status = document.getElementById("gate-code-status");
   const code = input.value.trim();
   if(!code){ status.textContent = "Код хоосон байж болохгүй."; return; }
+  if(attCode && code === attCode){ status.textContent = "Ирцийн кодоос өөр код сонгоно уу."; return; }
   const { error } = await supabase.from("site_settings")
     .upsert({ id: "main", gate_code: code, updated_at: new Date().toISOString() });
   if(error){ status.textContent = ""; showToast("Хадгалахад алдаа: " + error.message, true); return; }
@@ -1924,6 +2015,11 @@ function wireStaticEvents(){
   document.getElementById("teacher-filter-select").addEventListener("change", renderTeacherList);
   document.getElementById("group-add-go").addEventListener("click", addGroup);
   document.getElementById("gate-code-save").addEventListener("click", saveGateCode);
+  document.getElementById("att-code-save").addEventListener("click", saveAttCode);
+  document.getElementById("gate-att-open").addEventListener("click", ()=> showGateMode("att"));
+  document.getElementById("gate-att-back").addEventListener("click", ()=> showGateMode("main"));
+  document.getElementById("gate-att-btn").addEventListener("click", tryAttendanceUnlock);
+  document.getElementById("gate-att-code").addEventListener("keydown", e=>{ if(e.key==="Enter") tryAttendanceUnlock(); });
   document.getElementById("perm-load-go").addEventListener("click", loadPermForEmail);
   document.getElementById("perm-save-go").addEventListener("click", savePermForEmail);
   document.getElementById("perm-delete-go").addEventListener("click", removePermForEmail);

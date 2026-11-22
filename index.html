@@ -18,6 +18,7 @@
   <div class="gate-card">
     <div class="gate-mark">184</div>
     <h1>184-р сургууль менежментийн тогтолцоо</h1>
+    <div id="gate-main">
     <p>Үргэлжлүүлэхийн тулд бүлгээ сонгож, нэр, нэвтрэх кодоо оруулна уу.</p>
     <select id="gate-group-select" style="margin-bottom:10px;">
       <option value="">Мэргэжлийн хөгжлийн бүлгээ сонгоно уу</option>
@@ -27,6 +28,16 @@
     <button class="btn-primary" style="justify-content:center" id="gate-btn">Нэвтрэх</button>
     <div class="gate-err" id="gate-err"></div>
     <button class="btn-ghost" style="width:100%;justify-content:center;margin-top:14px;" id="gate-admin-btn">Админ эрхээр нэвтрэх</button>
+    <button class="btn-ghost" style="width:100%;justify-content:center;margin-top:8px;" id="gate-att-open">⏰ Ирц бүртгэх</button>
+    </div>
+    <div id="gate-att" hidden>
+      <p>Ирц, хоцролт бүртгэх хэсэг. Нэрээ болон ирцийн кодоо оруулна уу.</p>
+      <input id="gate-att-name" type="text" placeholder="Таны нэр" autocomplete="off" style="margin-bottom:10px;" />
+      <input id="gate-att-code" type="text" placeholder="Ирцийн код" autocomplete="off" />
+      <button class="btn-primary" style="justify-content:center" id="gate-att-btn">Нэвтрэх</button>
+      <div class="gate-err" id="gate-att-err"></div>
+      <button class="btn-ghost" style="width:100%;justify-content:center;margin-top:14px;" id="gate-att-back">← Багшийн нэвтрэлт рүү буцах</button>
+    </div>
   </div>
 </div>
 
@@ -37,6 +48,8 @@
     <a href="#f=root" class="side-link" data-nav="root">🏠 Нүүр</a>
     <a href="#qr" class="side-link" data-nav="qr">🔳 Дүрэм, журам</a>
     <a href="#calendar" class="side-link" data-nav="calendar">📅 Хичээлийн жилийн хуанли</a>
+    <a href="#late" class="side-link" data-nav="late" id="late-nav-link" hidden>⏰ Хоцролтын бүртгэл</a>
+    <a href="#mood" class="side-link" data-nav="mood" id="mood-nav-link" hidden>💬 Сэтгэл мэдрэмж</a>
     <a href="#registry" class="side-link" data-nav="registry" id="registry-nav-link" hidden>📋 Бүртгэл</a>
     <div class="side-sep"></div>
     <div class="side-label">Фолдерууд</div>
@@ -160,6 +173,8 @@
         <div class="modal" id="cal-category-modal"></div>
       </div>
     </div>
+    <div id="late-view" hidden></div>
+    <div id="mood-view" hidden></div>
     <div id="registry-view" hidden>
       <div class="topbar">
         <div class="crumbs"><span>Бүртгэл</span></div>
@@ -173,6 +188,13 @@
             <button class="btn-primary" id="gate-code-save">Хадгалах</button>
           </div>
           <p class="hint" id="gate-code-status" style="margin:8px 0 0;"></p>
+          <h3 style="margin-top:18px;">⏰ Ирц бүртгэх код</h3>
+          <p class="hint" style="margin:-6px 0 10px;">Энэ кодоор нэвтэрсэн хүнд зөвхөн хоцролтын бүртгэл, сэтгэл мэдрэмжийн хуудас нээгдэнэ.</p>
+          <div class="registry-add-row">
+            <input type="text" id="att-code-input" placeholder="Жишээ: IRTS184" />
+            <button class="btn-primary" id="att-code-save">Хадгалах</button>
+          </div>
+          <p class="hint" id="att-code-status" style="margin:8px 0 0;"></p>
         </div>
         <div class="registry-panel">
           <h3>Мэргэжлийн хөгжлийн бүлгүүд</h3>

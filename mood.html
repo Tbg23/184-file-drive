@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="mn">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Өнөөдөр ямар санагдаж байна?</title>
+<meta name="robots" content="noindex" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&family=Source+Sans+3:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  color-scheme: light;
+  --bg:#EEF7EE; --surface:#FFFFFF; --surface-2:#E3F1E4; --border:#CFE6D4;
+  --text:#213024; --text-dim:#5F7568; --accent:#1E7A3B; --accent-strong:#155A2C; --accent-soft:#DFF0E2;
+  --warn:#B4531F; --warn-soft:#FBEADF; --danger:#B3261E;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --bg:#0F1712; --surface:#182219; --surface-2:#1E2C21; --border:#2E4132;
+    --text:#E7F0E8; --text-dim:#9BB3A1; --accent:#4CB876; --accent-strong:#7FD39E; --accent-soft:#1C2E22;
+    --warn:#F2A06B; --warn-soft:#3A2618; --danger:#FF8078;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --bg:#0F1712; --surface:#182219; --surface-2:#1E2C21; --border:#2E4132;
+  --text:#E7F0E8; --text-dim:#9BB3A1; --accent:#4CB876; --accent-strong:#7FD39E; --accent-soft:#1C2E22;
+  --warn:#F2A06B; --warn-soft:#3A2618; --danger:#FF8078;
+}
+*{box-sizing:border-box;}
+[hidden]{display:none!important;}
+html,body{margin:0;}
+body{background:var(--bg);color:var(--text);font-family:'Source Sans 3',system-ui,sans-serif;min-height:100vh;
+  padding:20px 16px calc(28px + env(safe-area-inset-bottom));}
+h1,h2,button{font-family:'Manrope',system-ui,sans-serif;}
+.wrap{max-width:520px;margin:0 auto;}
+.head{display:flex;align-items:center;gap:12px;margin-bottom:18px;}
+.head img{width:44px;height:44px;border-radius:12px;background:#fff;border:1px solid var(--border);object-fit:contain;}
+.head .school{font-size:13px;color:var(--text-dim);font-weight:600;}
+.head h1{font-size:20px;margin:2px 0 0;line-height:1.2;text-wrap:balance;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:18px;margin-bottom:14px;}
+.card h2{font-size:15px;margin:0 0 12px;}
+.card h2 small{font-weight:600;color:var(--text-dim);font-size:13px;}
+.note{font-size:13.5px;color:var(--text-dim);line-height:1.5;margin:0;}
+.row{display:flex;gap:8px;flex-wrap:wrap;}
+.pill{border:1.5px solid var(--border);background:var(--surface);color:var(--text);border-radius:12px;padding:10px 0;
+  min-width:56px;font-weight:700;font-size:15px;cursor:pointer;flex:1;}
+.pill.on{background:var(--accent);border-color:var(--accent);color:#fff;}
+.letters .pill{min-width:0;}
+.moods{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;}
+.mood{border:1.5px solid var(--border);background:var(--surface);border-radius:14px;padding:10px 2px 8px;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--text);transition:transform .1s;}
+.mood .e{font-size:34px;line-height:1;}
+.mood .t{font-size:11.5px;font-weight:700;text-align:center;line-height:1.15;}
+.mood.on{border-color:var(--accent);background:var(--accent-soft);transform:translateY(-2px);}
+.tags{display:flex;flex-wrap:wrap;gap:8px;}
+.tag{border:1.5px solid var(--border);background:var(--surface);color:var(--text);border-radius:999px;padding:8px 13px;
+  font-size:14px;font-weight:600;cursor:pointer;font-family:'Source Sans 3',system-ui,sans-serif;}
+.tag.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-strong);}
+.tag.neg.on{background:var(--warn-soft);border-color:var(--warn);color:var(--warn);}
+.sub{font-size:12px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin:4px 0 8px;}
+textarea{width:100%;border:1.5px solid var(--border);background:var(--bg);color:var(--text);border-radius:12px;padding:12px;
+  font:inherit;font-size:15px;resize:vertical;min-height:80px;}
+textarea:focus,.pill:focus-visible,.mood:focus-visible,.tag:focus-visible,.send:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.count{font-size:12px;color:var(--text-dim);text-align:right;margin-top:4px;}
+.send{width:100%;background:var(--accent);color:#fff;border:none;border-radius:14px;padding:15px;font-size:16px;font-weight:800;cursor:pointer;}
+.send:disabled{opacity:.5;cursor:default;}
+.err{color:var(--danger);font-size:14px;text-align:center;min-height:20px;margin-top:10px;}
+.done{text-align:center;padding:36px 18px;}
+.done .big{font-size:64px;line-height:1;margin-bottom:12px;}
+.done h2{font-size:20px;margin:0 0 8px;}
+.priv{display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--text-dim);margin:6px 2px 16px;line-height:1.45;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <img src="./assets/calendar/logo-school.png" alt="184-р сургуулийн лого">
+    <div><div class="school">184-р сургууль · 10–12-р анги</div><h1>Өнөөдөр сургууль дээр ямар санагдаж байна?</h1></div>
+  </div>
+
+  <div id="form">
+    <div class="priv">🔒 <span>Нэрээ бичихгүй. Хэн бөглөснийг хэн ч мэдэхгүй. Өдөрт нэг удаа бөглөнө.</span></div>
+
+    <div class="card">
+      <h2>1. Ангиа сонго</h2>
+      <div class="row" id="grades"></div>
+      <div class="row letters" id="letters" style="margin-top:8px"></div>
+    </div>
+
+    <div class="card">
+      <h2>2. Өнөөдрийн мэдрэмж</h2>
+      <div class="moods" id="moods"></div>
+    </div>
+
+    <div class="card">
+      <h2>3. Юунаас болж ингэж санагдсан бэ? <small>(олныг сонгож болно)</small></h2>
+      <div class="sub">Сайн тал</div>
+      <div class="tags" id="tags-pos"></div>
+      <div class="sub" style="margin-top:14px">Санаа зовоосон зүйл</div>
+      <div class="tags" id="tags-neg"></div>
+    </div>
+
+    <div class="card">
+      <h2>4. Нэмж хэлэх зүйл <small>(заавал биш)</small></h2>
+      <textarea id="comment" maxlength="500" placeholder="Сургуулийн орчныг сайжруулах санал, санаа зовоосон зүйлээ бичиж болно"></textarea>
+      <div class="count"><span id="cc">0</span> / 500</div>
+    </div>
+
+    <button class="send" id="send" disabled>Илгээх</button>
+    <div class="err" id="err" role="alert"></div>
+  </div>
+
+  <div class="card done" id="done" hidden>
+    <div class="big" id="done-emoji">💚</div>
+    <h2 id="done-title">Баярлалаа!</h2>
+    <p class="note" id="done-text">Таны хариулт хадгалагдлаа. Маргааш дахин бөглөөрэй.</p>
+  </div>
+</div>
+
+<script type="module">
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const MOODS = [
+  { v:5, e:"😄", t:"Маш сайн" }, { v:4, e:"🙂", t:"Сайн" }, { v:3, e:"😐", t:"Дунд зэрэг" },
+  { v:2, e:"🙁", t:"Муу" }, { v:1, e:"😢", t:"Маш муу" },
+];
+const POS = ["Найз нөхөдтэйгээ сайхан", "Багш нар дэмжсэн", "Хичээл сонирхолтой", "Анги танхим цэвэрхэн", "Аюулгүй санагдсан"];
+const NEG = ["Хичээлийн ачаалал их", "Ядарсан, нойр дутуу", "Дээрэлхэлт, доромжлол", "Анги хүйтэн/бүгчим", "Ариун цэврийн өрөө", "Хоол, цайны газар", "Чимээ шуугиан их"];
+// 184-р сургуулийн ахлах ангиуд (shalgalt184-ийн жагсаалтаар)
+const LETTERS = { 10:["А","Б","В","Г"], 11:["А","Б","В","Г"], 12:["А","Б"] };
+
+const ls = { get(k){ try { return localStorage.getItem(k); } catch { return null; } }, set(k,v){ try { localStorage.setItem(k,v); } catch {} } };
+const pad = n => String(n).padStart(2,"0");
+const today = (()=>{ const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; })();
+let device = ls.get("mood184_device");
+if(!device){ device = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now()); ls.set("mood184_device", device); }
+
+const st = { grade: null, letter: null, mood: null, tags: new Set() };
+const saved = (ls.get("mood184_class") || "").match(/^(1[0-2])(.)$/);
+if(saved){ st.grade = Number(saved[1]); st.letter = saved[2]; }
+
+const $ = id => document.getElementById(id);
+function showDone(emoji, title, text){
+  $("form").hidden = true; $("done").hidden = false;
+  $("done-emoji").textContent = emoji; $("done-title").textContent = title; $("done-text").textContent = text;
+}
+if(ls.get("mood184_last") === today){
+  showDone("✅", "Өнөөдөр бөглөсөн байна", "Баярлалаа! Маргааш дахин бөглөөрэй.");
+}
+
+function render(){
+  $("grades").innerHTML = [10,11,12].map(g=>`<button type="button" class="pill ${st.grade===g?"on":""}" data-g="${g}" aria-pressed="${st.grade===g}">${g}-р анги</button>`).join("");
+  $("letters").hidden = !st.grade;
+  $("letters").innerHTML = st.grade ? LETTERS[st.grade].map(l=>`<button type="button" class="pill ${st.letter===l?"on":""}" data-l="${l}" aria-pressed="${st.letter===l}">${l}</button>`).join("") : "";
+  $("moods").innerHTML = MOODS.map(m=>`<button type="button" class="mood ${st.mood===m.v?"on":""}" data-m="${m.v}" aria-pressed="${st.mood===m.v}"><span class="e">${m.e}</span><span class="t">${m.t}</span></button>`).join("");
+  const tag = (t, neg) => `<button type="button" class="tag ${neg?"neg":""} ${st.tags.has(t)?"on":""}" data-t="${t}" aria-pressed="${st.tags.has(t)}">${t}</button>`;
+  $("tags-pos").innerHTML = POS.map(t=>tag(t,false)).join("");
+  $("tags-neg").innerHTML = NEG.map(t=>tag(t,true)).join("");
+  $("send").disabled = !(st.grade && st.letter && st.mood);
+  document.querySelectorAll("[data-g]").forEach(b=> b.onclick = ()=>{ st.grade = Number(b.dataset.g); st.letter = null; render(); });
+  document.querySelectorAll("[data-l]").forEach(b=> b.onclick = ()=>{ st.letter = b.dataset.l; render(); });
+  document.querySelectorAll("[data-m]").forEach(b=> b.onclick = ()=>{ st.mood = Number(b.dataset.m); render(); });
+  document.querySelectorAll("[data-t]").forEach(b=> b.onclick = ()=>{ const t = b.dataset.t; st.tags.has(t) ? st.tags.delete(t) : st.tags.add(t); render(); });
+}
+render();
+$("comment").addEventListener("input", e=> $("cc").textContent = e.target.value.length);
+
+$("send").onclick = async ()=>{
+  const cls = `${st.grade}${st.letter}`;
+  $("send").disabled = true; $("err").textContent = "";
+  const { data, error } = await supabase.rpc("mood_submit", {
+    p_class: cls, p_mood: st.mood, p_tags: [...st.tags], p_comment: $("comment").value.trim(), p_device: device,
+  });
+  if(error){ $("err").textContent = "Илгээж чадсангүй. Дахин оролдоно уу."; $("send").disabled = false; return; }
+  ls.set("mood184_class", cls); ls.set("mood184_last", today);
+  if(data === "dup") showDone("✅", "Өнөөдөр бөглөсөн байна", "Энэ утаснаас өнөөдөр аль хэдийн илгээсэн байна. Маргааш дахин бөглөөрэй.");
+  else {
+    const low = st.mood <= 2;
+    showDone(low ? "🤝" : "💚", "Баярлалаа!", low
+      ? "Таны хариулт хадгалагдлаа. Хэцүү байвал ангийн багш, нийгмийн ажилтан эсвэл сэтгэл зүйчтэйгээ ярилцаарай. Чамайг сонсох хүн байгаа."
+      : "Таны хариулт хадгалагдлаа. Маргааш дахин бөглөөрэй.");
+  }
+};
+</script>
+</body>
+</html>
