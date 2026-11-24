@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Өнөөдөр ямар санагдаж байна?</title>
+<title>Daily School Well-being Check-in</title>
 <meta name="robots" content="noindex" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -72,51 +72,86 @@ textarea:focus,.pill:focus-visible,.mood:focus-visible,.tag:focus-visible,.send:
 .done .big{font-size:64px;line-height:1;margin-bottom:12px;}
 .done h2{font-size:20px;margin:0 0 8px;}
 .priv{display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--text-dim);margin:6px 2px 16px;line-height:1.45;}
+.badge{display:inline-block;font-family:'Manrope',system-ui,sans-serif;font-size:12px;font-weight:800;letter-spacing:.3px;
+  color:var(--accent-strong);background:var(--accent-soft);border:1px solid var(--border);border-radius:999px;padding:4px 10px;margin-bottom:8px;}
+.intro{font-size:14.5px;line-height:1.55;margin:0 0 8px;}
+.intro.dim{color:var(--text-dim);font-size:13.5px;}
+.grades{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;}
+.grades .pill{min-width:0;padding:10px 0;}
+.hint{font-size:13px;color:var(--text-dim);margin:-6px 0 10px;}
+.mood .n{font-size:11px;font-weight:800;color:var(--text-dim);}
+.lvls{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+.lvl{border:1.5px solid var(--border);background:var(--surface);color:var(--text);border-radius:14px;padding:10px 4px;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;gap:6px;}
+.lvl .bars{display:flex;gap:3px;align-items:flex-end;height:22px;}
+.lvl .bars i{display:block;width:6px;border-radius:2px;background:var(--border);}
+.lvl .t{font-size:12px;font-weight:700;text-align:center;line-height:1.15;font-family:'Manrope',system-ui,sans-serif;}
+.lvl.on{border-color:var(--accent);background:var(--accent-soft);}
+.lvl.on .bars i.f{background:var(--accent);}
+.lvl:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.foot{text-align:center;font-size:14px;color:var(--text-dim);margin:18px 6px 0;line-height:1.5;}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="head">
     <img src="./assets/calendar/logo-school.png" alt="184-р сургуулийн лого">
-    <div><div class="school">184-р сургууль · 10–12-р анги</div><h1>Өнөөдөр сургууль дээр ямар санагдаж байна?</h1></div>
+    <div><div class="school">184-р сургууль · 6–12-р анги</div><h1>Өнөөдөр сургууль дээр ямар санагдаж байна?</h1></div>
   </div>
 
   <div id="form">
-    <div class="priv">🔒 <span>Нэрээ бичихгүй. Хэн бөглөснийг хэн ч мэдэхгүй. Өдөрт нэг удаа бөглөнө.</span></div>
+    <div class="card">
+      <div class="badge">Daily School Well-being Check-in</div>
+      <p class="intro"><b>Өдөр тутмын сэтгэл хөдлөлийн үнэлгээ.</b> Энэ асуулга нь чиний өнөөдрийн сэтгэл хөдлөл, сургуулийн орчинд мэдэрч буй зүйлсийг ойлгоход зориулагдсан.</p>
+      <p class="intro dim">Өөрийн мэдрэмжид тохирсон хариултыг үнэнээр нь сонгоорой. Зөв, буруу хариулт байхгүй.</p>
+    </div>
+    <div class="priv">🔒 <span>Нэрээ бичихгүй. Хэн бөглөснийг хэн ч харахгүй. Өдөрт нэг удаа бөглөнө.</span></div>
 
     <div class="card">
-      <h2>1. Ангиа сонго</h2>
-      <div class="row" id="grades"></div>
+      <h2>1. Чи аль ангид сурдаг вэ?</h2>
+      <div class="grades" id="grades"></div>
       <div class="row letters" id="letters" style="margin-top:8px"></div>
     </div>
 
     <div class="card">
-      <h2>2. Өнөөдрийн мэдрэмж</h2>
+      <h2>2. Өнөөдрийн сэтгэл санаа ямар байна вэ?</h2>
       <div class="moods" id="moods"></div>
     </div>
 
     <div class="card">
-      <h2>3. Юунаас болж ингэж санагдсан бэ? <small>(олныг сонгож болно)</small></h2>
-      <div class="sub">Сайн тал</div>
+      <h2>3. Өнөөдөр сургууль дээр чамд юу хамгийн сайхан мэдрэмж төрүүлсэн бэ?</h2>
+      <p class="hint">Олон хариулт сонгож болно.</p>
       <div class="tags" id="tags-pos"></div>
-      <div class="sub" style="margin-top:14px">Санаа зовоосон зүйл</div>
+    </div>
+
+    <div class="card">
+      <h2>4. Өнөөдөр чамд юу санаа зовоосон эсвэл таагүй мэдрэмж төрүүлсэн бэ?</h2>
+      <p class="hint">Олон хариулт сонгож болно.</p>
       <div class="tags" id="tags-neg"></div>
     </div>
 
     <div class="card">
-      <h2>4. Нэмж хэлэх зүйл <small>(заавал биш)</small></h2>
-      <textarea id="comment" maxlength="500" placeholder="Сургуулийн орчныг сайжруулах санал, санаа зовоосон зүйлээ бичиж болно"></textarea>
+      <h2>5. Өнөөдрийн чиний мэдрэмж хэр хүчтэй байна вэ?</h2>
+      <div class="lvls" id="lvls"></div>
+    </div>
+
+    <div class="card">
+      <h2>6. Өнөөдөр сургууль дээр чамд хамгийн их хэрэгтэй байгаа зүйл юу вэ?</h2>
+      <p class="hint">Хариулахыг хүсвэл бичиж болно. Алгасаж болно.</p>
+      <textarea id="comment" maxlength="500" placeholder="Энд бичиж болно"></textarea>
       <div class="count"><span id="cc">0</span> / 500</div>
     </div>
 
     <button class="send" id="send" disabled>Илгээх</button>
     <div class="err" id="err" role="alert"></div>
+    <p class="foot">Өөрийн мэдрэмжийг анзаарч, ойлгох нь өөртөө туслах эхний алхам юм. 🤍</p>
   </div>
 
   <div class="card done" id="done" hidden>
     <div class="big" id="done-emoji">💚</div>
     <h2 id="done-title">Баярлалаа!</h2>
-    <p class="note" id="done-text">Таны хариулт хадгалагдлаа. Маргааш дахин бөглөөрэй.</p>
+    <p class="note" id="done-text">Чиний хариулт хадгалагдлаа. Маргааш дахин бөглөөрэй.</p>
+    <p class="note" style="margin-top:14px">Өөрийн мэдрэмжийг анзаарч, ойлгох нь өөртөө туслах эхний алхам юм. 🤍</p>
   </div>
 </div>
 
@@ -126,13 +161,27 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const MOODS = [
-  { v:5, e:"😄", t:"Маш сайн" }, { v:4, e:"🙂", t:"Сайн" }, { v:3, e:"😐", t:"Дунд зэрэг" },
+  { v:5, e:"😁", t:"Маш сайхан" }, { v:4, e:"🙂", t:"Сайн" }, { v:3, e:"😐", t:"Дунд зэрэг" },
   { v:2, e:"🙁", t:"Муу" }, { v:1, e:"😢", t:"Маш муу" },
 ];
-const POS = ["Найз нөхөдтэйгээ сайхан", "Багш нар дэмжсэн", "Хичээл сонирхолтой", "Анги танхим цэвэрхэн", "Аюулгүй санагдсан"];
-const NEG = ["Хичээлийн ачаалал их", "Ядарсан, нойр дутуу", "Дээрэлхэлт, доромжлол", "Анги хүйтэн/бүгчим", "Ариун цэврийн өрөө", "Хоол, цайны газар", "Чимээ шуугиан их"];
-// 184-р сургуулийн ахлах ангиуд (shalgalt184-ийн жагсаалтаар)
-const LETTERS = { 10:["А","Б","В","Г"], 11:["А","Б","В","Г"], 12:["А","Б"] };
+// [хадгалах утга, харагдах бичвэр]
+const POS = [
+  "Найз нөхөдтэйгөө сайхан харилцсан", "Багш нар намайг ойлгож, дэмжсэн", "Хичээлээ ойлгож, амжилттай суралцсан",
+  "Өөрийн чадвар, амжилтыг мэдэрсэн", "Анги хамт олондоо хүлээн зөвшөөрөгдсөн", "Сонирхолтой үйл ажиллагаанд оролцсон",
+  "Сургууль дээр тайван, аюулгүй байсан", "Өнөөдөр онцгой сайхан зүйл тохиолдсон",
+].map(t=>[t,t]).concat([["Өөр зүйл (сайхан)", "Өөр зүйл"]]);
+const NONE = "Юу ч санаа зовоогоогүй";
+const NEG = [
+  "Хичээлийн ачаалал их байсан", "Шалгалт, үнэлгээ, дүнгийн талаар санаа зовсон", "Найз нөхөдтэй холбоотой асуудал гарсан",
+  "Үл ойлголцол, маргаан, гадуурхалт мэдэрсэн", "Багштай харилцахад таагүй байсан", "Анги, сургуулийн орчинд тав тухгүй байсан",
+  "Ядарсан, нойр дутуу байсан", "Хувийн асуудалд санаа зовсон", "Өнөөдөр онцгой таагүй зүйл тохиолдсон",
+].map(t=>[t,t]).concat([[NONE, NONE], ["Өөр зүйл (санаа зовсон)", "Өөр зүйл"]]);
+const LEVELS = [ { v:1, t:"Бага зэрэг" }, { v:2, t:"Дунд зэрэг" }, { v:3, t:"Нэлээд хүчтэй" }, { v:4, t:"Маш хүчтэй" } ];
+const GRADES = [6,7,8,9,10,11,12];
+// Ангийн бүлгүүдийг сургуулийн жагсаалтаас авна; холбогдохгүй бол энэ жагсаалтыг ашиглана.
+let LETTERS = {};
+const FALLBACK = ["А","Б","В","Г","Д","Е"];
+const lettersOf = g => (LETTERS[g] && LETTERS[g].length) ? LETTERS[g] : FALLBACK;
 
 const ls = { get(k){ try { return localStorage.getItem(k); } catch { return null; } }, set(k,v){ try { localStorage.setItem(k,v); } catch {} } };
 const pad = n => String(n).padStart(2,"0");
@@ -140,11 +189,12 @@ const today = (()=>{ const d = new Date(); return `${d.getFullYear()}-${pad(d.ge
 let device = ls.get("mood184_device");
 if(!device){ device = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now()); ls.set("mood184_device", device); }
 
-const st = { grade: null, letter: null, mood: null, tags: new Set() };
-const saved = (ls.get("mood184_class") || "").match(/^(1[0-2])(.)$/);
+const st = { grade: null, letter: null, mood: null, level: null, tags: new Set() };
+const saved = (ls.get("mood184_class") || "").match(/^(1[0-2]|[6-9])(\D+)$/);
 if(saved){ st.grade = Number(saved[1]); st.letter = saved[2]; }
 
 const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" })[c]);
 function showDone(emoji, title, text){
   $("form").hidden = true; $("done").hidden = false;
   $("done-emoji").textContent = emoji; $("done-title").textContent = title; $("done-text").textContent = text;
@@ -154,27 +204,52 @@ if(ls.get("mood184_last") === today){
 }
 
 function render(){
-  $("grades").innerHTML = [10,11,12].map(g=>`<button type="button" class="pill ${st.grade===g?"on":""}" data-g="${g}" aria-pressed="${st.grade===g}">${g}-р анги</button>`).join("");
+  $("grades").innerHTML = GRADES.map(g=>`<button type="button" class="pill ${st.grade===g?"on":""}" data-g="${g}" aria-pressed="${st.grade===g}" aria-label="${g}-р анги">${g}</button>`).join("");
   $("letters").hidden = !st.grade;
-  $("letters").innerHTML = st.grade ? LETTERS[st.grade].map(l=>`<button type="button" class="pill ${st.letter===l?"on":""}" data-l="${l}" aria-pressed="${st.letter===l}">${l}</button>`).join("") : "";
-  $("moods").innerHTML = MOODS.map(m=>`<button type="button" class="mood ${st.mood===m.v?"on":""}" data-m="${m.v}" aria-pressed="${st.mood===m.v}"><span class="e">${m.e}</span><span class="t">${m.t}</span></button>`).join("");
-  const tag = (t, neg) => `<button type="button" class="tag ${neg?"neg":""} ${st.tags.has(t)?"on":""}" data-t="${t}" aria-pressed="${st.tags.has(t)}">${t}</button>`;
-  $("tags-pos").innerHTML = POS.map(t=>tag(t,false)).join("");
-  $("tags-neg").innerHTML = NEG.map(t=>tag(t,true)).join("");
+  $("letters").innerHTML = st.grade ? lettersOf(st.grade).map(l=>`<button type="button" class="pill ${st.letter===l?"on":""}" data-l="${esc(l)}" aria-pressed="${st.letter===l}">${st.grade}${esc(l)}</button>`).join("") : "";
+  $("moods").innerHTML = MOODS.map(m=>`<button type="button" class="mood ${st.mood===m.v?"on":""}" data-m="${m.v}" aria-pressed="${st.mood===m.v}"><span class="e">${m.e}</span><span class="n">${m.v}</span><span class="t">${m.t}</span></button>`).join("");
+  const tag = ([v, t], neg) => `<button type="button" class="tag ${neg?"neg":""} ${st.tags.has(v)?"on":""}" data-t="${esc(v)}" aria-pressed="${st.tags.has(v)}">${esc(t)}</button>`;
+  $("tags-pos").innerHTML = POS.map(x=>tag(x,false)).join("");
+  $("tags-neg").innerHTML = NEG.map(x=>tag(x, x[0] !== NONE)).join("");
+  $("lvls").innerHTML = LEVELS.map(l=>`<button type="button" class="lvl ${st.level===l.v?"on":""}" data-v="${l.v}" aria-pressed="${st.level===l.v}">
+    <span class="bars" aria-hidden="true">${[1,2,3,4].map(i=>`<i class="${i<=l.v?"f":""}" style="height:${6+i*4}px"></i>`).join("")}</span>
+    <span class="t">${l.v} — ${l.t}</span></button>`).join("");
   $("send").disabled = !(st.grade && st.letter && st.mood);
   document.querySelectorAll("[data-g]").forEach(b=> b.onclick = ()=>{ st.grade = Number(b.dataset.g); st.letter = null; render(); });
   document.querySelectorAll("[data-l]").forEach(b=> b.onclick = ()=>{ st.letter = b.dataset.l; render(); });
   document.querySelectorAll("[data-m]").forEach(b=> b.onclick = ()=>{ st.mood = Number(b.dataset.m); render(); });
-  document.querySelectorAll("[data-t]").forEach(b=> b.onclick = ()=>{ const t = b.dataset.t; st.tags.has(t) ? st.tags.delete(t) : st.tags.add(t); render(); });
+  document.querySelectorAll("[data-v]").forEach(b=> b.onclick = ()=>{ const v = Number(b.dataset.v); st.level = st.level === v ? null : v; render(); });
+  document.querySelectorAll("[data-t]").forEach(b=> b.onclick = ()=>{
+    const t = b.dataset.t;
+    if(st.tags.has(t)) st.tags.delete(t);
+    else {
+      st.tags.add(t);
+      // «Юу ч санаа зовоогоогүй» нь бусад санаа зовсон сонголттой хамт байхгүй
+      const negVals = NEG.map(x=>x[0]);
+      if(t === NONE) negVals.forEach(v=>{ if(v !== NONE) st.tags.delete(v); });
+      else if(negVals.includes(t)) st.tags.delete(NONE);
+    }
+    render();
+  });
 }
 render();
 $("comment").addEventListener("input", e=> $("cc").textContent = e.target.value.length);
+
+supabase.rpc("mood_classes").then(({ data })=>{
+  if(!Array.isArray(data)) return;
+  const by = {};
+  data.forEach(c=>{ const m = /^(1[0-2]|[6-9])(\D+)$/.exec(c); if(m) (by[m[1]] ||= []).push(m[2]); });
+  Object.values(by).forEach(a=> a.sort((x,y)=> x.localeCompare(y, "mn")));
+  LETTERS = by;
+  if(st.grade && st.letter && !lettersOf(st.grade).includes(st.letter)) st.letter = null;
+  render();
+});
 
 $("send").onclick = async ()=>{
   const cls = `${st.grade}${st.letter}`;
   $("send").disabled = true; $("err").textContent = "";
   const { data, error } = await supabase.rpc("mood_submit", {
-    p_class: cls, p_mood: st.mood, p_tags: [...st.tags], p_comment: $("comment").value.trim(), p_device: device,
+    p_class: cls, p_mood: st.mood, p_tags: [...st.tags], p_comment: $("comment").value.trim(), p_device: device, p_intensity: st.level,
   });
   if(error){ $("err").textContent = "Илгээж чадсангүй. Дахин оролдоно уу."; $("send").disabled = false; return; }
   ls.set("mood184_class", cls); ls.set("mood184_last", today);
@@ -182,8 +257,8 @@ $("send").onclick = async ()=>{
   else {
     const low = st.mood <= 2;
     showDone(low ? "🤝" : "💚", "Баярлалаа!", low
-      ? "Таны хариулт хадгалагдлаа. Хэцүү байвал ангийн багш, нийгмийн ажилтан эсвэл сэтгэл зүйчтэйгээ ярилцаарай. Чамайг сонсох хүн байгаа."
-      : "Таны хариулт хадгалагдлаа. Маргааш дахин бөглөөрэй.");
+      ? "Чиний хариулт хадгалагдлаа. Хэцүү байвал ангийн багш, нийгмийн ажилтан эсвэл сэтгэл зүйчтэйгээ ярилцаарай. Чамайг сонсох хүн байгаа."
+      : "Чиний хариулт хадгалагдлаа. Маргааш дахин бөглөөрэй.");
   }
 };
 </script>

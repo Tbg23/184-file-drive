@@ -393,7 +393,7 @@ export const MOODS = [
   { v:2, e:"🙁", t:"Муу",        c:"#E8894A" },
   { v:3, e:"😐", t:"Дунд зэрэг", c:"#9AA59D" },
   { v:4, e:"🙂", t:"Сайн",       c:"#5FB27A" },
-  { v:5, e:"😄", t:"Маш сайн",   c:"#1E7A3B" },
+  { v:5, e:"😁", t:"Маш сайхан", c:"#1E7A3B" },
 ];
 const moodOf = v => MOODS.find(m=>m.v===Math.round(v)) || MOODS[2];
 
@@ -407,7 +407,7 @@ export async function renderMood(){
   const R = periodRange(st.period, st.anchor);
   const key = `${st.period}|${ymd(R.from)}|${ymd(R.to)}`;
   if(mood.key !== key){
-    root.innerHTML = `<div class="topbar"><div class="crumbs"><span>💬 Сурагчдын сэтгэл мэдрэмж</span></div></div><div class="ex-empty">Ачаалж байна…</div>`;
+    root.innerHTML = `<div class="topbar"><div class="crumbs"><span>💬 Daily School Well-being Check-in</span></div></div><div class="ex-empty">Ачаалж байна…</div>`;
     try { mood.rows = await rpc("mood_list", { code_input: staffCode(), p_from: ymd(R.from), p_to: ymd(R.to) }); mood.err = ""; }
     catch(e){ mood.rows = []; mood.err = errText(e); }
     mood.key = key;
@@ -416,8 +416,8 @@ export async function renderMood(){
   const classes = [...new Set(mood.rows.map(r=>r.class_name))].sort(cmpClass);
   const rows = mood.rows.filter(r => !f || (f.startsWith("g:") ? String(r.grade) === f.slice(2) : r.class_name === f));
   const filterSel = `<select class="ex-select" id="mood-filter" aria-label="Анги шүүх">
-      <option value="">10–12-р анги (бүгд)</option>
-      ${[10,11,12].map(g=>`<option value="g:${g}" ${f===`g:${g}`?"selected":""}>${g}-р анги</option>`).join("")}
+      <option value="">6–12-р анги (бүгд)</option>
+      ${[6,7,8,9,10,11,12].map(g=>`<option value="g:${g}" ${f===`g:${g}`?"selected":""}>${g}-р анги</option>`).join("")}
       ${classes.map(c=>`<option value="${esc(c)}" ${f===c?"selected":""}>${esc(c)}</option>`).join("")}
     </select>
     <button type="button" class="btn-ghost" id="mood-csv">⬇ Excel (CSV)</button>`;
@@ -449,8 +449,14 @@ export async function renderMood(){
     return { label:c, value:+a.toFixed(1), color:moodOf(a).c, extra:`${byClass[c].length} хариулт`, tip:`${c}: дундаж ${a.toFixed(1)} · ${byClass[c].length} хариулт` }; });
 
   const tagCount = {}; rows.forEach(r=> (r.tags||[]).forEach(t=> tagCount[t] = (tagCount[t]||0)+1));
-  const tagItems = Object.entries(tagCount).sort((a,b)=>b[1]-a[1]).map(([t,c])=>({ label:t, value:c, extra: n?`${Math.round(c*100/n)}%`:"",
-    color: NEG_TAGS.includes(t) ? "#E8894A" : "var(--accent)" }));
+  const tagItem = ([t,c]) => ({ label:t, value:c, extra: n?`${Math.round(c*100/n)}%`:"",
+    color: NEG_TAGS.includes(t) ? "#E8894A" : "var(--accent)" });
+  const tagSorted = Object.entries(tagCount).sort((a,b)=>b[1]-a[1]);
+  const posItems = tagSorted.filter(([t])=>!NEG_TAGS.includes(t) && t !== NO_WORRY).map(tagItem);
+  const negItems = tagSorted.filter(([t])=>NEG_TAGS.includes(t) || t === NO_WORRY).map(tagItem);
+  const withLvl = rows.filter(r=>r.intensity);
+  const lvlItems = LEVELS.map(l=>{ const c = withLvl.filter(r=>r.intensity===l.v).length;
+    return { label:`${l.v} — ${l.t}`, value:c, extra: withLvl.length?`${Math.round(c*100/withLvl.length)}%`:"", color:"var(--accent)" }; });
   const comments = rows.filter(r=>r.comment).slice(0, 80);
 
   root.innerHTML = `<div class="topbar"><div class="crumbs"><span>💬 Сурагчдын сэтгэл мэдрэмж</span></div></div>
@@ -458,7 +464,7 @@ export async function renderMood(){
       <canvas id="mood-qr" width="132" height="132" aria-label="Сурагчдын бөглөх хуудасны QR"></canvas>
       <div class="ex-qr-info">
         <h3>Сурагчид энэ QR-ыг уншуулж бөглөнө</h3>
-        <p class="ex-hint">10–12-р ангийн сурагч өдөрт нэг удаа, <b>нэргүйгээр</b> сургуулийн орчинд ямар санагдаж байгаагаа илэрхийлнэ. Багшийн код хэрэггүй.</p>
+        <p class="ex-hint">6–12-р ангийн сурагч өдөрт нэг удаа, <b>нэргүйгээр</b> өнөөдөр сургууль дээр ямар санагдаж байгаагаа бөглөнө. Багшийн код хэрэггүй.</p>
         <div class="ex-url mono">${esc(moodUrl())}</div>
         <div class="actions"><button type="button" class="btn-ghost" id="mood-copy">🔗 Холбоос хуулах</button>
           <button type="button" class="btn-ghost" id="mood-qr-png">🖼️ QR татах (PNG)</button>
@@ -479,19 +485,23 @@ export async function renderMood(){
     </div>
     <div class="registry-layout" style="margin-top:20px">
       <div class="registry-panel"><h3>Ангиар дундаж (1–5)</h3>${hbars(classItems, { fmt:v=>v.toFixed(1), empty:"Хариулт алга" })}</div>
-      <div class="registry-panel"><h3>Юунаас болж ингэж санагдсан бэ?</h3>${hbars(tagItems, { empty:"Сонголт алга" })}</div>
+      <div class="registry-panel"><h3>Мэдрэмж хэр хүчтэй байсан бэ?</h3>${hbars(lvlItems, { empty:"Хариулт алга" })}</div>
     </div>
-    <div class="registry-panel" style="margin-top:20px"><h3>Сурагчдын бичсэн санал <small class="ex-hint">(${comments.length})</small></h3>
+    <div class="registry-layout" style="margin-top:20px">
+      <div class="registry-panel"><h3>Юу хамгийн сайхан мэдрэмж төрүүлсэн бэ?</h3>${hbars(posItems, { empty:"Сонголт алга" })}</div>
+      <div class="registry-panel"><h3>Юу санаа зовоосон бэ?</h3>${hbars(negItems, { empty:"Сонголт алга" })}</div>
+    </div>
+    <div class="registry-panel" style="margin-top:20px"><h3>Сургууль дээр хамгийн их хэрэгтэй байгаа зүйл <small class="ex-hint">(${comments.length})</small></h3>
       ${comments.length ? `<div class="ex-comments">${comments.map(r=>`<div class="ex-comment">
           <span class="ex-emoji" title="${esc(moodOf(r.mood).t)}">${moodOf(r.mood).e}</span>
           <div><div>${esc(r.comment)}</div><div class="ex-hint">${esc(r.class_name)} · ${esc(r.entry_date)}</div></div></div>`).join("")}</div>`
-        : `<div class="ex-empty">Санал бичээгүй байна</div>`}
+        : `<div class="ex-empty">Бичсэн хариулт алга</div>`}
     </div>`}`;
   wirePeriodBar(root, st, renderMood);
   const fs = root.querySelector("#mood-filter"); if(fs) fs.onchange = ()=>{ st.filter = fs.value; renderMood(); };
   const cb = root.querySelector("#mood-csv"); if(cb) cb.onclick = ()=> downloadCsv(`setgel_medremj_${ymd(R.from)}_${ymd(R.to)}.csv`,
-    ["Огноо","Анги","Үнэлгээ (1-5)","Мэдрэмж","Шалтгаан","Санал"],
-    rows.map(r=>[r.entry_date, r.class_name, r.mood, moodOf(r.mood).t, (r.tags||[]).join("; "), r.comment || ""]));
+    ["Огноо","Анги","Үнэлгээ (1-5)","Мэдрэмж","Хүч (1-4)","Сонголтууд","Хамгийн их хэрэгтэй зүйл"],
+    rows.map(r=>[r.entry_date, r.class_name, r.mood, moodOf(r.mood).t, r.intensity ?? "", (r.tags||[]).join("; "), r.comment || ""]));
   drawMoodQr();
   root.querySelector("#mood-copy").onclick = async ()=>{
     try { await navigator.clipboard.writeText(moodUrl()); X.showToast("Холбоос хуулагдлаа."); }
@@ -519,6 +529,16 @@ function drawMoodQr(size = 132, offscreen = false){
   return canvas;
 }
 
-// mood.html-тэй ижил шалтгаанууд (сөрөг нь өнгөөр ялгагдана)
-export const POS_TAGS = ["Найз нөхөдтэйгээ сайхан", "Багш нар дэмжсэн", "Хичээл сонирхолтой", "Анги танхим цэвэрхэн", "Аюулгүй санагдсан"];
-export const NEG_TAGS = ["Хичээлийн ачаалал их", "Ядарсан, нойр дутуу", "Дээрэлхэлт, доромжлол", "Анги хүйтэн/бүгчим", "Ариун цэврийн өрөө", "Хоол, цайны газар", "Чимээ шуугиан их"];
+// mood.html-тэй ижил сонголтууд (сөрөг нь өнгөөр ялгагдана)
+export const POS_TAGS = ["Найз нөхөдтэйгөө сайхан харилцсан", "Багш нар намайг ойлгож, дэмжсэн", "Хичээлээ ойлгож, амжилттай суралцсан",
+  "Өөрийн чадвар, амжилтыг мэдэрсэн", "Анги хамт олондоо хүлээн зөвшөөрөгдсөн", "Сонирхолтой үйл ажиллагаанд оролцсон",
+  "Сургууль дээр тайван, аюулгүй байсан", "Өнөөдөр онцгой сайхан зүйл тохиолдсон", "Өөр зүйл (сайхан)",
+  // өмнөх хувилбарын сонголтууд
+  "Найз нөхөдтэйгээ сайхан", "Багш нар дэмжсэн", "Хичээл сонирхолтой", "Анги танхим цэвэрхэн", "Аюулгүй санагдсан"];
+export const NEG_TAGS = ["Хичээлийн ачаалал их байсан", "Шалгалт, үнэлгээ, дүнгийн талаар санаа зовсон", "Найз нөхөдтэй холбоотой асуудал гарсан",
+  "Үл ойлголцол, маргаан, гадуурхалт мэдэрсэн", "Багштай харилцахад таагүй байсан", "Анги, сургуулийн орчинд тав тухгүй байсан",
+  "Ядарсан, нойр дутуу байсан", "Хувийн асуудалд санаа зовсон", "Өнөөдөр онцгой таагүй зүйл тохиолдсон", "Өөр зүйл (санаа зовсон)",
+  // өмнөх хувилбарын сонголтууд
+  "Хичээлийн ачаалал их", "Ядарсан, нойр дутуу", "Дээрэлхэлт, доромжлол", "Анги хүйтэн/бүгчим", "Ариун цэврийн өрөө", "Хоол, цайны газар", "Чимээ шуугиан их"];
+export const NO_WORRY = "Юу ч санаа зовоогоогүй";
+export const LEVELS = [ { v:1, t:"Бага зэрэг" }, { v:2, t:"Дунд зэрэг" }, { v:3, t:"Нэлээд хүчтэй" }, { v:4, t:"Маш хүчтэй" } ];
