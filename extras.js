@@ -426,17 +426,17 @@ export async function renderMood(){
   const avg = n ? rows.reduce((a,r)=>a+r.mood,0)/n : 0;
   const pct = k => n ? Math.round(rows.filter(r=>k(r.mood)).length*100/n) : 0;
   const dist = MOODS.slice().reverse().map(m=>{ const c = rows.filter(r=>r.mood===m.v).length;
-    return { label:`${m.e} ${m.t}`, labelHtml:`<span class="ex-emoji">${m.e}</span> ${m.t}`, value:c, color:m.c, extra: n?`${Math.round(c*100/n)}%`:"", tip:`${m.t}: ${c} (${n?Math.round(c*100/n):0}%)` }; });
+    return { label:`${m.v} ${m.t}`, labelHtml:`<span class="ex-emoji">${m.e}</span> ${m.v} ${m.t}`, value:c, color:m.c, extra: n?`${Math.round(c*100/n)}%`:"", tip:`${m.t}: ${c} (${n?Math.round(c*100/n):0}%)` }; });
 
   let trendTitle, trend;
   if(st.period === "day"){
-    trendTitle = "Ангиар дундаж үнэлгээ (1–5)";
+    trendTitle = "Ангиар дундаж сэтгэл санаа (1–5)";
     const by = {}; rows.forEach(r=>{ (by[r.class_name] ||= []).push(r.mood); });
     trend = vbars(Object.keys(by).sort(cmpClass).map(c=>{ const a = by[c].reduce((x,y)=>x+y,0)/by[c].length;
       return { label:c, value:+a.toFixed(1), color:moodOf(a).c, tip:`${c}: дундаж ${a.toFixed(1)} · ${by[c].length} хариулт` }; }),
       { max:5, fmt:v=>v.toFixed(1), empty:"Энэ өдөр хариулт ирээгүй байна" });
   } else {
-    trendTitle = "Өдөр бүрийн дундаж үнэлгээ (1–5)";
+    trendTitle = "Өдөр бүрийн дундаж сэтгэл санаа (1–5)";
     trend = vbars(daysOf(R.from, R.to).map(d=>{ const k = ymd(d); const rs = rows.filter(r=>r.entry_date===k);
       const a = rs.length ? rs.reduce((x,r)=>x+r.mood,0)/rs.length : 0;
       return { label: st.period==="week" ? `${WD[d.getDay()]} ${d.getDate()}` : String(d.getDate()), value: rs.length ? +a.toFixed(1) : 0,
@@ -444,22 +444,30 @@ export async function renderMood(){
       { max:5, fmt:v=>v.toFixed(1), empty:"Энэ хугацаанд хариулт ирээгүй байна" });
   }
 
+  // 1. Анги: хариултын тоо + дундаж сэтгэл санаа
   const byClass = {}; rows.forEach(r=>{ (byClass[r.class_name] ||= []).push(r.mood); });
   const classItems = Object.keys(byClass).sort(cmpClass).map(c=>{ const a = byClass[c].reduce((x,y)=>x+y,0)/byClass[c].length;
-    return { label:c, value:+a.toFixed(1), color:moodOf(a).c, extra:`${byClass[c].length} хариулт`, tip:`${c}: дундаж ${a.toFixed(1)} · ${byClass[c].length} хариулт` }; });
+    return { label:c, value:byClass[c].length, color:moodOf(a).c, extra:`дундаж ${a.toFixed(1)}`, tip:`${c}: ${byClass[c].length} хариулт · дундаж ${a.toFixed(1)}` }; });
 
+  // 3, 4. Сонголтууд — асуулгын дарааллаар, сонгоогүй нь 0
   const tagCount = {}; rows.forEach(r=> (r.tags||[]).forEach(t=> tagCount[t] = (tagCount[t]||0)+1));
-  const tagItem = ([t,c]) => ({ label:t, value:c, extra: n?`${Math.round(c*100/n)}%`:"",
-    color: NEG_TAGS.includes(t) ? "#E8894A" : "var(--accent)" });
-  const tagSorted = Object.entries(tagCount).sort((a,b)=>b[1]-a[1]);
-  const posItems = tagSorted.filter(([t])=>!NEG_TAGS.includes(t) && t !== NO_WORRY).map(tagItem);
-  const negItems = tagSorted.filter(([t])=>NEG_TAGS.includes(t) || t === NO_WORRY).map(tagItem);
+  const optItems = (list, neg) => list.map(([v, t])=>{ const c = tagCount[v] || 0;
+    return { label:t, value:c, extra: n?`${Math.round(c*100/n)}%`:"", color: neg && v !== NO_WORRY ? "#E8894A" : "var(--accent)", tip:`${t}: ${c} сурагч` }; });
+  const posItems = optItems(Q3_OPTIONS, false);
+  const negItems = optItems(Q4_OPTIONS, true);
+  // өмнөх хувилбарын сонголтууд (хуучин хариултад байвал л харуулна)
+  const known = new Set([...Q3_OPTIONS, ...Q4_OPTIONS].map(x=>x[0]));
+  const oldItems = Object.entries(tagCount).filter(([t])=>!known.has(t)).sort((x,y)=>y[1]-x[1])
+    .map(([t,c])=>({ label:t, value:c, extra: n?`${Math.round(c*100/n)}%`:"", color: NEG_TAGS.includes(t) ? "#E8894A" : "var(--accent)" }));
+
+  // 5. Мэдрэмжийн хүч
   const withLvl = rows.filter(r=>r.intensity);
   const lvlItems = LEVELS.map(l=>{ const c = withLvl.filter(r=>r.intensity===l.v).length;
     return { label:`${l.v} — ${l.t}`, value:c, extra: withLvl.length?`${Math.round(c*100/withLvl.length)}%`:"", color:"var(--accent)" }; });
   const comments = rows.filter(r=>r.comment).slice(0, 80);
+  const q = (title, body, note = "") => `<div class="registry-panel" style="margin-top:20px"><h3>${esc(title)}${note ? ` <small class="ex-hint">${esc(note)}</small>` : ""}</h3>${body}</div>`;
 
-  root.innerHTML = `<div class="topbar"><div class="crumbs"><span>💬 Сурагчдын сэтгэл мэдрэмж</span></div></div>
+  root.innerHTML = `<div class="topbar"><div class="crumbs"><span>💬 Daily School Well-being Check-in</span></div></div>
     <div class="registry-panel ex-qr-panel">
       <canvas id="mood-qr" width="132" height="132" aria-label="Сурагчдын бөглөх хуудасны QR"></canvas>
       <div class="ex-qr-info">
@@ -475,28 +483,24 @@ export async function renderMood(){
     ${mood.err ? `<div class="registry-panel ex-err">${esc(mood.err)}</div>` : `
     <div class="ex-kpis">
       ${kpi("Хариулт", n)}
-      ${kpi("Дундаж үнэлгээ", n ? `<span class="ex-emoji">${moodOf(avg).e}</span> ${avg.toFixed(1)}<small> / 5</small>` : "—", n ? moodOf(avg).t : "")}
+      ${kpi("Дундаж сэтгэл санаа", n ? `<span class="ex-emoji">${moodOf(avg).e}</span> ${avg.toFixed(1)}<small> / 5</small>` : "—", n ? moodOf(avg).t : "")}
       ${kpi("Сайн (4–5)", `${pct(v=>v>=4)}<small>%</small>`)}
       ${kpi("Муу (1–2)", `${pct(v=>v<=2)}<small>%</small>`)}
     </div>
-    <div class="registry-layout">
-      <div class="registry-panel"><h3>Мэдрэмжийн хуваарилалт</h3>${hbars(dist, { empty:"Хариулт алга" })}</div>
+    ${q("1. Чи аль ангид сурдаг вэ?", hbars(classItems, { empty:"Хариулт алга" }), "(анги бүрээс хэдэн сурагч бөглөсөн)")}
+    <div class="registry-layout" style="margin-top:20px">
+      <div class="registry-panel"><h3>2. Өнөөдрийн сэтгэл санаа ямар байна вэ?</h3>${hbars(dist, { empty:"Хариулт алга" })}</div>
       <div class="registry-panel"><h3>${trendTitle}</h3>${trend}</div>
     </div>
-    <div class="registry-layout" style="margin-top:20px">
-      <div class="registry-panel"><h3>Ангиар дундаж (1–5)</h3>${hbars(classItems, { fmt:v=>v.toFixed(1), empty:"Хариулт алга" })}</div>
-      <div class="registry-panel"><h3>Мэдрэмж хэр хүчтэй байсан бэ?</h3>${hbars(lvlItems, { empty:"Хариулт алга" })}</div>
-    </div>
-    <div class="registry-layout" style="margin-top:20px">
-      <div class="registry-panel"><h3>Юу хамгийн сайхан мэдрэмж төрүүлсэн бэ?</h3>${hbars(posItems, { empty:"Сонголт алга" })}</div>
-      <div class="registry-panel"><h3>Юу санаа зовоосон бэ?</h3>${hbars(negItems, { empty:"Сонголт алга" })}</div>
-    </div>
-    <div class="registry-panel" style="margin-top:20px"><h3>Сургууль дээр хамгийн их хэрэгтэй байгаа зүйл <small class="ex-hint">(${comments.length})</small></h3>
-      ${comments.length ? `<div class="ex-comments">${comments.map(r=>`<div class="ex-comment">
+    ${q("3. Өнөөдөр сургууль дээр чамд юу хамгийн сайхан мэдрэмж төрүүлсэн бэ?", hbars(posItems), "(олон хариулт сонгож болно)")}
+    ${q("4. Өнөөдөр чамд юу санаа зовоосон эсвэл таагүй мэдрэмж төрүүлсэн бэ?", hbars(negItems), "(олон хариулт сонгож болно)")}
+    ${q("5. Өнөөдрийн чиний мэдрэмж хэр хүчтэй байна вэ?", hbars(lvlItems), withLvl.length ? `(${withLvl.length} сурагч хариулсан)` : "")}
+    ${q("6. Өнөөдөр сургууль дээр чамд хамгийн их хэрэгтэй байгаа зүйл юу вэ?",
+      comments.length ? `<div class="ex-comments">${comments.map(r=>`<div class="ex-comment">
           <span class="ex-emoji" title="${esc(moodOf(r.mood).t)}">${moodOf(r.mood).e}</span>
           <div><div>${esc(r.comment)}</div><div class="ex-hint">${esc(r.class_name)} · ${esc(r.entry_date)}</div></div></div>`).join("")}</div>`
-        : `<div class="ex-empty">Бичсэн хариулт алга</div>`}
-    </div>`}`;
+        : `<div class="ex-empty">Бичсэн хариулт алга</div>`, `(${comments.length})`)}
+    ${oldItems.length ? q("Өмнөх асуулгын сонголтууд", hbars(oldItems), "(шинэ асуулга гарахаас өмнөх хариултууд)") : ""}`}`;
   wirePeriodBar(root, st, renderMood);
   const fs = root.querySelector("#mood-filter"); if(fs) fs.onchange = ()=>{ st.filter = fs.value; renderMood(); };
   const cb = root.querySelector("#mood-csv"); if(cb) cb.onclick = ()=> downloadCsv(`setgel_medremj_${ymd(R.from)}_${ymd(R.to)}.csv`,
@@ -541,4 +545,7 @@ export const NEG_TAGS = ["Хичээлийн ачаалал их байсан", 
   // өмнөх хувилбарын сонголтууд
   "Хичээлийн ачаалал их", "Ядарсан, нойр дутуу", "Дээрэлхэлт, доромжлол", "Анги хүйтэн/бүгчим", "Ариун цэврийн өрөө", "Хоол, цайны газар", "Чимээ шуугиан их"];
 export const NO_WORRY = "Юу ч санаа зовоогоогүй";
+// [хадгалагдах утга, харагдах бичвэр] — mood.html-ийн 3, 4-р асуулттай яг ижил дараалал
+const Q3_OPTIONS = POS_TAGS.slice(0, 8).map(t=>[t,t]).concat([["Өөр зүйл (сайхан)", "Өөр зүйл"]]);
+const Q4_OPTIONS = NEG_TAGS.slice(0, 9).map(t=>[t,t]).concat([[NO_WORRY, NO_WORRY], ["Өөр зүйл (санаа зовсон)", "Өөр зүйл"]]);
 export const LEVELS = [ { v:1, t:"Бага зэрэг" }, { v:2, t:"Дунд зэрэг" }, { v:3, t:"Нэлээд хүчтэй" }, { v:4, t:"Маш хүчтэй" } ];
